@@ -857,3 +857,64 @@ describe('trocar personalidade do participante', () => {
     assert.ok(!/name="campo" value="personalidade"/.test(corpo))
   })
 })
+
+
+describe('limite de tentativas de login', () => {
+  let auth
+
+  before(async () => {
+    auth = await import('../src/dashboard/auth.js')
+  })
+
+  beforeEach(() => auth._limparBloqueios())
+  after(() => auth._limparBloqueios())
+
+  const errar = () =>
+    cru('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: EMAIL, senha: 'errada' }),
+    })
+
+  test('bloqueia a origem depois de tentativas demais', async () => {
+    for (let i = 0; i < 5; i++) assert.equal((await errar()).status, 401)
+
+    const bloqueado = await errar()
+    assert.equal(bloqueado.status, 429)
+    assert.match(await bloqueado.text(), /Tente de novo em/)
+  })
+
+  test('mesmo com a senha CERTA o bloqueio vale', async () => {
+    for (let i = 0; i < 5; i++) await errar()
+
+    const r = await cru('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: EMAIL, senha: SENHA }),
+    })
+
+    assert.equal(r.status, 429, 'senha certa não deve furar o bloqueio')
+  })
+
+  test('login bem-sucedido limpa o contador', async () => {
+    await errar()
+    await errar()
+
+    const ok = await cru('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: EMAIL, senha: SENHA }),
+    })
+    assert.equal(ok.status, 302)
+
+    // O contador zerou: cinco falhas novas ainda são necessárias para bloquear.
+    for (let i = 0; i < 4; i++) assert.equal((await errar()).status, 401)
+  })
+
+  test('cada falha é freada por um atraso', async () => {
+    const antes = Date.now()
+    await errar()
+
+    assert.ok(Date.now() - antes >= 900, 'a resposta de falha precisa vir freada')
+  })
+})

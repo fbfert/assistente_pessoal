@@ -109,16 +109,25 @@ para tirar a operação do `docker compose exec` + SQL manual.
 
 ### Como entrar
 
-Login por **e-mail e senha**, com contas em `admin_usuarios`. Se você abre pelo
-domínio, o navegador pede credencial **duas vezes** — são camadas diferentes, e
-podem ter senhas diferentes:
+Login por **e-mail e senha**, no formulário da própria página. Uma credencial só.
 
-| Quem pergunta | O que é | Onde se troca |
-|---|---|---|
-| Caixa do navegador, antes da página | Basic Auth do Apache (`.htaccess`) | `htpasswd -b /home/tdah/.htpasswd <email>` no servidor |
-| Formulário dentro da página | Conta do admin | `/conta`, dentro do próprio admin |
+Houve, por um tempo, um Basic Auth do Apache pedindo credencial num popup antes
+da página. Ele existiu enquanto a aplicação **não tinha login nenhum**; depois que
+as contas passaram a existir, ele só somava um segundo popup pedindo a mesma
+coisa, e foi removido.
 
-Por túnel SSH só a segunda existe — o Apache não está no caminho.
+**Consequência que fica registrada:** o formulário de login é agora publicamente
+alcançável em `https://tdah.xiax.com.br/login`. A proteção contra força bruta
+passou a ser da aplicação:
+
+- cada falha responde com **atraso fixo** — não contornável, derruba a taxa de
+  tentativa em ordens de grandeza;
+- **5 falhas da mesma origem bloqueiam por 15 minutos**, inclusive para quem
+  acertar a senha depois.
+
+O bloqueio vive na memória do processo: reiniciar o container o limpa. Isso é
+aceitável para o caso acidental, e não é uma defesa contra ataque persistente —
+o que protege de verdade é a senha ser forte.
 
 **Trocar a senha do admin:** entre e vá em *Minha conta*. Pede a senha atual, e a
 troca encerra as demais sessões daquela conta.

@@ -24,6 +24,10 @@ import * as admins from '../db/adminRepo.js'
 export function montarApp() {
   const app = express()
 
+  // Atrás do Apache, todo request chega do loopback. Sem isto, o limite de
+  // tentativas por origem trataria a internet inteira como um cliente só.
+  app.set('trust proxy', 'loopback')
+
   app.use(express.urlencoded({ extended: false }))
 
   app.get('/health', (_req, res) => res.json({ ok: true }))

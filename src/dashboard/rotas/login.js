@@ -10,6 +10,8 @@ import {
   lerCookie,
   sessaoValida,
   registrarFalhaDeLogin,
+  loginBloqueado,
+  limparTentativas,
 } from '../auth.js'
 
 export const rotasLogin = Router()
@@ -40,11 +42,20 @@ rotasLogin.get('/login', (req, res) => {
 })
 
 rotasLogin.post('/login', async (req, res) => {
+  const minutos = loginBloqueado(req)
+  if (minutos) {
+    return res.status(429).type('html').send(
+      telaLogin({
+        erro: `Tentativas demais. Tente de novo em ${minutos} minuto(s).`,
+      }),
+    )
+  }
+
   const email = String(req.body?.email ?? '').trim()
   const conta = await admins.autenticar(email, req.body?.senha)
 
   if (!conta) {
-    registrarFalhaDeLogin(req, email)
+    await registrarFalhaDeLogin(req, email)
     // Mensagem única: não distingue "e-mail não existe" de "senha errada" nem
     // de "conta desativada". O tempo de resposta também não distingue —
     // ver `queimarTempo` em senha.js.
@@ -53,6 +64,8 @@ rotasLogin.post('/login', async (req, res) => {
       .type('html')
       .send(telaLogin({ erro: 'E-mail ou senha incorretos.', email }))
   }
+
+  limparTentativas(req)
 
   registrarAcaoAdmin({
     autorId: conta.admin_id,

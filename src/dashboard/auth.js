@@ -131,10 +131,70 @@ export function exigirSessao(req, res, next) {
   next()
 }
 
+// =============================================================================
+// Limite de tentativas de login
+//
+// Existe desde que o Basic Auth do Apache foi removido: antes, o formulário só
+// era alcançável por quem já tinha passado por uma camada; hoje ele está aberto
+// na internet, e a única barreira é a senha.
+//
+// Duas defesas, de propósito:
+//
+// 1. ATRASO FIXO a cada falha. Não depende de identificar a origem, então não
+//    é contornável de jeito nenhum. Sozinho, derruba a taxa de tentativa de
+//    milhares por minuto para dezenas.
+// 2. BLOQUEIO POR ORIGEM depois de N falhas. Mais eficaz, porém dependente do
+//    IP que chega via proxy — que um atacante determinado pode forjar no
+//    cabeçalho. É defesa em profundidade, não garantia.
+//
+// Nenhuma das duas substitui uma senha forte.
+// =============================================================================
+
+const MAX_FALHAS = 5
+const BLOQUEIO_MS = 15 * 60 * 1000
+const ATRASO_POR_FALHA_MS = 1000
+
+/** origem -> { falhas, bloqueadoAte } */
+const tentativas = new Map()
+
+const origemDe = (req) => req.ip ?? req.socket?.remoteAddress ?? 'desconhecida'
+
+export function loginBloqueado(req) {
+  const t = tentativas.get(origemDe(req))
+  if (!t?.bloqueadoAte) return false
+
+  if (Date.now() >= t.bloqueadoAte) {
+    tentativas.delete(origemDe(req))
+    return false
+  }
+  return Math.ceil((t.bloqueadoAte - Date.now()) / 60000)
+}
+
 /** Log de falha SEM a senha tentada, nem em claro nem em forma reversível. */
-export function registrarFalhaDeLogin(req, email) {
-  const origem = req.ip ?? req.socket?.remoteAddress ?? 'desconhecida'
+export async function registrarFalhaDeLogin(req, email) {
+  const origem = origemDe(req)
+  const t = tentativas.get(origem) ?? { falhas: 0, bloqueadoAte: null }
+  t.falhas += 1
+
+  if (t.falhas >= MAX_FALHAS) {
+    t.bloqueadoAte = Date.now() + BLOQUEIO_MS
+    console.warn(`[admin] origem ${origem} bloqueada por ${MAX_FALHAS} falhas de login`)
+  }
+  tentativas.set(origem, t)
+
   console.warn(`[admin] login malsucedido para "${email ?? '(sem e-mail)'}" de ${origem}`)
+
+  // O atraso vem DEPOIS de contabilizar, para que a resposta já saia freada.
+  await new Promise((r) => setTimeout(r, ATRASO_POR_FALHA_MS))
+}
+
+export function limparTentativas(req) {
+  tentativas.delete(origemDe(req))
+}
+
+/** Só para teste. */
+export function _limparBloqueios() {
+  tentativas.clear()
 }
 
 /** Só para teste: limpa o estado de sessão entre casos. */
