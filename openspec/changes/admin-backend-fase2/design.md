@@ -164,16 +164,28 @@ lento. Por isso nasce em `0` e a decisão de ativar é explícita.
 
 ---
 
-## Perguntas abertas — decisão do dono do projeto
+## Decisões do dono do projeto
 
-As três param a implementação dos prompts que dependem delas. Nada de 7 e 8 é
-construído antes das respostas.
+As três perguntas abaixo foram levantadas e **respondidas**. Ficam registradas com
+as opções que estavam na mesa, para que a escolha continue legível depois.
 
 ### (a) Re-consentimento quando o texto muda de versão
 
-Quem aceitou a `v1` continua consentido quando o texto virar `v2`?
+**DECIDIDO: consentimento antigo continua válido.** Não há fluxo de
+re-consentimento. Quem aceitou a `v1` segue consentido quando o texto virar `v2`,
+com a versão que aceitou registrada em `consentimento_versao`.
 
-**Opção 1 — continua válido.** Nada muda para quem já aceitou; a versão antiga
+Consequência que fica documentada no README: se uma edição futura mudar **o que é
+feito com o dado** — e não apenas a redação —, o consentimento registrado deixa de
+cobrir o tratamento real, e aí a decisão precisa ser revista. Enquanto as edições
+forem de redação, a escolha se sustenta.
+
+A página do participante passa a marcar quem está numa versão anterior. Isso é o
+que torna a decisão auditável: dá para ver, a qualquer momento, quem aceitou o quê.
+
+Opções que estavam na mesa:
+
+**Opção 1 — continua válido.** ← escolhida Nada muda para quem já aceitou; a versão antiga
 fica registrada em `consentimento_versao`. Simples, não interrompe ninguém, e
 preserva o rastro de qual texto cada pessoa aceitou. Risco: se a `v2` mudar o que
 é feito com o dado — e não apenas a redação —, o consentimento registrado deixa de
@@ -193,10 +205,14 @@ edição.
 
 ### (b) Persistência do buffer de debounce
 
-Se o container reiniciar dentro da janela de poucos segundos, as mensagens em
-buffer somem. A pessoa provavelmente reenviaria por conta própria, sem saber por quê.
+**DECIDIDO: buffer em memória, limitação aceita.** Sem tabela e sem recuperação na
+subida. Se o container reiniciar dentro da janela de poucos segundos, as mensagens
+em buffer se perdem — fica documentado no README, para que o comportamento não
+apareça depois como bug misterioso.
 
-**Opção 1 — aceitar em memória.** Simples, sem tabela, sem recuperação na subida.
+Opções que estavam na mesa:
+
+**Opção 1 — aceitar em memória.** ← escolhida Simples, sem tabela, sem recuperação na subida.
 A janela de perda é de segundos e reinício é raro. Perder uma mensagem de alguém em
 sobrecarga não é neutro, mas o custo de evitá-lo é desproporcional.
 
@@ -206,11 +222,21 @@ toda mensagem recebida para cobrir um evento raro.
 
 ### (c) Custo do teste de mensagem
 
-Cada clique em "testar" é uma chamada real e paga. Nada limita quantas vezes.
+**DECIDIDO: limite de 20 por administrador e hora, configurável.** O teto não é
+constante no código: entra como mais uma chave da configuração viva
+(`TESTE_IA_LIMITE_HORA`, padrão 20), com a mesma validação de faixa, o mesmo
+histórico e a mesma reversão das demais.
+
+Isso resolve o caso acidental — formulário reenviado em laço, aba esquecida
+recarregando — sem obrigar a um deploy quando 20 se mostrar apertado ou folgado
+demais numa sessão real de calibração. Zero SHALL significar sem limite.
+
+Opções que estavam na mesa:
 
 **Opção 1 — sem limite.** É um operador calibrando; o custo por chamada é de
 centavos. Confia no bom senso de quem opera.
 
 **Opção 2 — limite por administrador e hora** (por exemplo, 20). Protege contra o
 caso acidental — um formulário reenviado em laço, um refresh insistente. Custa uma
-contagem em memória e uma mensagem de recusa.
+contagem em memória e uma mensagem de recusa. ← escolhida, com o teto configurável
+em vez de fixo no código
