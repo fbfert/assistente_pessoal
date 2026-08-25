@@ -18,6 +18,11 @@ homes/
 tmp/
 virtualmin-backup/
 md/
+.ssh/
+*.pem
+*_rsa
+*_ed25519
+id_*
 .bash_logout
 .bash_profile
 .bashrc
