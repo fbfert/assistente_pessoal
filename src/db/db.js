@@ -41,6 +41,10 @@ export function abrirDb(caminho = config.db.path) {
   const db = new Database(caminho)
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
+  // Dois processos escrevem neste arquivo: o bot e o admin. O WAL suporta o
+  // caso, mas sem tempo de espera uma colisao vira SQLITE_BUSY imediato em vez
+  // de uma pausa de milissegundos.
+  db.pragma('busy_timeout = 5000')
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'))
 
   instancia = db

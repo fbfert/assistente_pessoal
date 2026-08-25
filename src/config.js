@@ -63,6 +63,16 @@ export const config = {
     // ("127.0.0.1:3300:3300"). A garantia de segurança é a mesma; muda só onde
     // ela é aplicada.
     host: process.env.DASHBOARD_HOST || '127.0.0.1',
+
+    // Senha do backend administrativo.
+    //
+    // Fica sob `dashboard` e NAO sob um `config.admin` novo de proposito: o
+    // modulo continua sendo o mesmo processo, mesma porta e mesmo bind. Criar
+    // um segundo namespace obrigaria a renomear DASHBOARD_HOST/DASHBOARD_PORT
+    // em .env.example, docker-compose.yml, README e no container que ja esta
+    // rodando -- churn sem ganho, com risco de deixar as duas formas
+    // coexistindo por acidente.
+    adminPassword: process.env.ADMIN_PASSWORD || '',
   },
 
   // Os dois números "no chute" do piloto. Existem como env justamente porque

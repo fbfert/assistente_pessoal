@@ -88,6 +88,7 @@ export function funilRetencao(db = getDb()) {
               u.nome,
               u.anamnese_estado,
               u.consentimento_aceito,
+              u.pausado,
               (SELECT COUNT(*) FROM historico_interacoes h
                 WHERE h.usuario_id = u.usuario_id
                   AND h.tipo = 'gatilho_disparado'

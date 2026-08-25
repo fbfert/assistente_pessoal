@@ -38,6 +38,7 @@ export function resumoPiloto(db = getDb()) {
       anamneseEstado: u.anamnese_estado,
       consentiu: Boolean(u.consentimento_aceito),
       concluiuAnamnese: u.anamnese_estado === 12,
+      pausado: Boolean(u.pausado),
       checkinsDisparados: u.checkins_disparados,
       checkinsRespondidos: u.checkins_respondidos,
       taxaResposta:
@@ -64,5 +65,21 @@ export function resumoPiloto(db = getDb()) {
       concluiram: usuarios.filter((u) => u.concluiuAnamnese).length,
       emAlerta: usuarios.filter((u) => u.alertaSobrecarga).length,
     },
+  }
+}
+
+/**
+ * Esteira do piloto, nominal.
+ *
+ * A contagem diz que existe um problema; a lista diz em quem cutucar. Por isso
+ * cada estágio devolve os participantes, não só o total.
+ */
+export function esteira(db = getDb()) {
+  const todos = resumoPiloto(db).usuarios
+
+  return {
+    pendentes: todos.filter((u) => !u.consentiu),
+    emAndamento: todos.filter((u) => u.consentiu && !u.concluiuAnamnese),
+    concluidos: todos.filter((u) => u.concluiuAnamnese),
   }
 }

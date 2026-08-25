@@ -76,7 +76,8 @@ o usuário em vez de duplicar.
 ## Dashboard
 
 O dashboard é alcançável **somente pelo loopback do host**. Ele mostra dado de saúde de
-pessoas identificadas e não tem autenticação — por isso nunca é exposto na porta pública.
+pessoas identificadas — por isso nunca é exposto na porta pública, mesmo tendo senha
+(ver [Backend administrativo](#backend-administrativo)).
 
 No Compose, o processo escuta em `0.0.0.0` *dentro do container* (lá o `127.0.0.1` seria o
 loopback do próprio container, que o mapeamento de porta não alcança) e quem restringe é o
@@ -99,6 +100,94 @@ Ele mostra, por pessoa: onde parou na anamnese, taxa de resposta do check-in,
 despejos espontâneos da semana, silêncios consecutivos por tipo de gatilho e
 correções reportadas. Quem cruzou o limiar de silêncio aparece destacado em
 vermelho — é o sinal de que alguém está sumindo.
+
+
+## Backend administrativo
+
+O dashboard não é só leitura: é a superfície de operação do piloto. Ele existe
+para tirar a operação do `docker compose exec` + SQL manual.
+
+### Duas camadas de proteção
+
+1. **Bind em loopback** — o processo nunca é alcançável da rede pública.
+2. **Senha de operador** (`ADMIN_PASSWORD`) — obrigatória. O processo **se recusa
+   a subir sem ela**, em vez de subir desprotegido.
+
+A senha existe porque o admin exibe o histórico completo das conversas e permite
+**escrita** sobre dado de saúde. O bind protege contra a rede; a senha protege
+contra quem já está do lado de dentro do túnel.
+
+### O que dá para fazer
+
+| | |
+|---|---|
+| **Esteira** | Lista nominal de quem está pendente de consentimento, quem consentiu sem concluir, e quem concluiu — não só a contagem |
+| **Detalhe** | Todos os campos da anamnese, personalidade, consentimento com data e versão, remédios, gatilhos e o histórico completo de conversas |
+| **Convidar** | Formulário de número novo, sem abrir SSH |
+| **Editar anamnese** | Qualquer campo da whitelist, direto na tela |
+| **Remédios** | Editar nome/horário e remover. Campo vazio grava `sem informação` (Regra 1b) — e remédio nesse estado não vira gatilho |
+| **Gatilhos** | Ativar, desativar e mudar horário. É assim que se liga o `checklist_fim_dia`, que nasce desligado |
+| **Silêncio** | Zerar contador, dando segunda chance sem esperar a pessoa responder |
+| **Pausar** | Suspende todos os disparos sem apagar nem desativar nada. Despausar restaura o estado exato |
+| **Reiniciar anamnese** | Ação destrutiva, com confirmação: limpa campos, remédios e gatilhos |
+| **Anonimizar** | Saída do piloto. Ver abaixo |
+| **Conexão** | Status do WhatsApp e QR de pareamento como imagem, sem `docker compose logs` |
+
+Toda ação de escrita grava uma linha `acao_admin` em `historico_interacoes` —
+mesmo log append-only de qualquer outra interação, sem tabela paralela.
+
+### Saída do piloto: anonimizar, não excluir
+
+`historico_interacoes` tem `ON DELETE CASCADE` a partir de `usuarios`. Apagar o
+participante levaria junto o registro de que ele **consentiu** — com data e
+versão — e o rastro de tudo que foi feito com o dado dele. É exatamente a prova
+que uma fiscalização pede.
+
+A anonimização redige número, campos da anamnese, remédios **e o texto de todas
+as interações** (é lá que estão as conversas, com nome e detalhes de saúde
+escritos pela própria pessoa). Preserva tipo, data e o registro do consentimento.
+
+É irreversível e não tem desfazer.
+
+### Confirmação em duas etapas
+
+O projeto não usa JavaScript de cliente, então não há `confirm()` do navegador.
+Ação destrutiva passa por uma página intermediária que descreve o efeito antes
+do POST. Abrir essa página não altera nada.
+
+## Recriar o banco (só com o banco vazio)
+
+As mudanças de schema do backend admin — coluna `pausado`, tipo `acao_admin` e a
+tabela `estado_conexao` — foram aplicadas direto no `schema.sql`, porque o banco
+do piloto estava **vazio** quando isso foi feito. Como o schema usa
+`CREATE TABLE IF NOT EXISTS`, um banco já existente **não** ganha as mudanças
+sozinho: precisa ser recriado.
+
+```bash
+# CONFIRA ANTES. Se retornar qualquer numero diferente de 0, PARE.
+docker compose exec dashboard node -e "
+  import('./src/db/db.js').then(({getDb}) => {
+    const db = getDb(); let t = 0;
+    for (const x of ['usuarios','remedios','gatilhos_configurados','contadores','despejos_semana','historico_interacoes'])
+      t += db.prepare('SELECT COUNT(*) n FROM '+x).get().n;
+    console.log('linhas:', t);
+  });"
+
+# So se o total for 0:
+docker compose down
+docker volume ls | grep tars_data     # confirme o nome exato
+docker volume rm <nome_do_volume>
+docker compose up -d --build
+```
+
+> **Isso apaga o pareamento do WhatsApp junto** (`/data/auth` vive no mesmo
+> volume). Você vai precisar escanear o QR de novo, presencialmente com o chip.
+
+Se já houver dado real, o caminho é outro: SQLite não altera CHECK constraint com
+`ALTER TABLE`. A migração segura é, dentro de uma transação e com
+`PRAGMA foreign_keys=OFF`, criar a tabela nova com a constraint atualizada,
+copiar os dados, dropar a antiga e renomear. Escreva isso como script de
+migração — não recrie o banco.
 
 ## Rodar os testes localmente
 

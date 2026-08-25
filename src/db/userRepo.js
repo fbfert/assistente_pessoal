@@ -1,6 +1,7 @@
 import { getDb } from './db.js'
 import {
   SEM_INFORMACAO,
+  REDIGIDO,
   TIPOS_GATILHO,
   HORARIO_PADRAO_CHECKIN,
   HORARIO_PADRAO_CHECKLIST,
@@ -134,7 +135,13 @@ export function listarGatilhosUsuario(usuarioId, db = getDb()) {
     .all(usuarioId)
 }
 
-/** Só gatilhos ativos de usuário com anamnese concluída. Quem está em onboarding não recebe disparo. */
+/**
+ * Só gatilhos ativos de usuário com anamnese concluída e não pausado.
+ *
+ * A pausa é FILTRO aqui, não desativação individual dos gatilhos: desativar um
+ * a um perderia a informação de quais estavam ativos por decisão do operador, e
+ * despausar restauraria o estado errado. Filtro é reversível por construção.
+ */
 export function listarGatilhosAtivos(db = getDb()) {
   return db
     .prepare(
@@ -144,6 +151,7 @@ export function listarGatilhosAtivos(db = getDb()) {
     LEFT JOIN remedios r ON r.remedio_id = g.remedio_id
         WHERE g.ativo = 1
           AND u.anamnese_estado = 12
+          AND u.pausado = 0
      ORDER BY g.usuario_id, g.horario`,
     )
     .all()
@@ -258,4 +266,129 @@ export function incrementarDespejoEspontaneo(usuarioId, data = new Date(), db = 
 export function getDespejosSemana(usuarioId, db = getDb()) {
   const linha = db.prepare('SELECT * FROM despejos_semana WHERE usuario_id = ?').get(usuarioId)
   return linha ?? { usuario_id: usuarioId, semana_inicio: inicioDaSemana(), contagem: 0 }
+}
+
+// --- Pausa --------------------------------------------------------------------
+
+export function setPausado(usuarioId, pausado, db = getDb()) {
+  db.prepare('UPDATE usuarios SET pausado = ? WHERE usuario_id = ?').run(pausado ? 1 : 0, usuarioId)
+  return findById(usuarioId, db)
+}
+
+// --- Remédios: edição -----------------------------------------------------------
+
+/** Campo vazio grava o sentinela (Regra 1b), nunca string vazia nem chute. */
+export function atualizarRemedio(remedioId, nome, horario, db = getDb()) {
+  db.prepare('UPDATE remedios SET nome = ?, horario = ? WHERE remedio_id = ?').run(
+    nome?.trim() || SEM_INFORMACAO,
+    horario?.trim() || SEM_INFORMACAO,
+    remedioId,
+  )
+  return db.prepare('SELECT * FROM remedios WHERE remedio_id = ?').get(remedioId) ?? null
+}
+
+export function buscarRemedio(remedioId, db = getDb()) {
+  return db.prepare('SELECT * FROM remedios WHERE remedio_id = ?').get(remedioId) ?? null
+}
+
+export function removerRemedio(remedioId, db = getDb()) {
+  db.prepare('DELETE FROM remedios WHERE remedio_id = ?').run(remedioId)
+}
+
+// --- Gatilhos: edição -----------------------------------------------------------
+
+export function buscarGatilho(gatilhoId, db = getDb()) {
+  return db.prepare('SELECT * FROM gatilhos_configurados WHERE gatilho_id = ?').get(gatilhoId) ?? null
+}
+
+/** Atualiza horário e/ou situação. Campo omitido preserva o valor atual. */
+export function atualizarGatilho(gatilhoId, { horario, ativo } = {}, db = getDb()) {
+  const atual = buscarGatilho(gatilhoId, db)
+  if (!atual) return null
+
+  db.prepare('UPDATE gatilhos_configurados SET horario = ?, ativo = ? WHERE gatilho_id = ?').run(
+    horario ?? atual.horario,
+    ativo === undefined ? atual.ativo : ativo ? 1 : 0,
+    gatilhoId,
+  )
+  return buscarGatilho(gatilhoId, db)
+}
+
+// --- Reinício de anamnese --------------------------------------------------------
+
+/**
+ * Zera a anamnese POR COMPLETO.
+ *
+ * Não reaproveita `convidarPiloto`: ele só reseta o estado, deixando resposta
+ * antiga em campo que a nova anamnese talvez não regrave — um registro
+ * meio-antigo meio-novo, pior que qualquer um dos dois. Aqui os campos, os
+ * remédios e os gatilhos vão junto.
+ *
+ * O histórico NÃO é tocado: é append-only e é o que prova o que aconteceu antes.
+ */
+export function reiniciarAnamnese(usuarioId, db = getDb()) {
+  const limpar = CAMPOS_ANAMNESE.map((c) => `${c} = NULL`).join(', ')
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM gatilhos_configurados WHERE usuario_id = ?').run(usuarioId)
+    db.prepare('DELETE FROM remedios WHERE usuario_id = ?').run(usuarioId)
+    db.prepare('DELETE FROM contadores WHERE usuario_id = ?').run(usuarioId)
+    db.prepare(
+      `UPDATE usuarios
+          SET ${limpar},
+              personalidade = NULL,
+              anamnese_estado = 0,
+              anamnese_exemplo_pedido = 0,
+              anamnese_lembrete_enviado = 0
+        WHERE usuario_id = ?`,
+    ).run(usuarioId)
+  })()
+
+  return findById(usuarioId, db)
+}
+
+// --- Anonimização ----------------------------------------------------------------
+
+/**
+ * Saída do piloto SEM perder o rastro de auditoria.
+ *
+ * `historico_interacoes` tem ON DELETE CASCADE a partir de `usuarios`: apagar o
+ * participante levaria junto o registro de que ele consentiu — com timestamp e
+ * versão — e todas as ações do operador sobre o dado dele. É exatamente a prova
+ * que uma fiscalização pede.
+ *
+ * O campo `texto` do histórico TAMBÉM é redigido: é lá que estão as respostas da
+ * anamnese e as conversas, escritas pela própria pessoa, quase sempre com nome e
+ * detalhes de saúde. Redigir só o número seria fachada.
+ *
+ * Esta é a única exceção ao append-only do histórico, e é deliberada: um UPDATE
+ * que apaga conteúdo identificável preserva mais que um DELETE que apaga a linha.
+ */
+export function anonimizarParticipante(usuarioId, db = getDb()) {
+  const redigirCampos = CAMPOS_ANAMNESE.map((c) => `${c} = '${REDIGIDO}'`).join(', ')
+
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE usuarios
+          SET numero_whatsapp = ?, ${redigirCampos}, pausado = 1
+        WHERE usuario_id = ?`,
+    ).run(`redigido:${usuarioId}`, usuarioId)
+
+    db.prepare('UPDATE remedios SET nome = ?, horario = ? WHERE usuario_id = ?').run(
+      REDIGIDO,
+      REDIGIDO,
+      usuarioId,
+    )
+
+    db.prepare('UPDATE gatilhos_configurados SET ativo = 0 WHERE usuario_id = ?').run(usuarioId)
+
+    // Tipo, timestamp e gatilho_relacionado permanecem — é o que sustenta a
+    // auditoria sem identificar ninguém.
+    db.prepare('UPDATE historico_interacoes SET texto = ? WHERE usuario_id = ?').run(
+      REDIGIDO,
+      usuarioId,
+    )
+  })()
+
+  return findById(usuarioId, db)
 }

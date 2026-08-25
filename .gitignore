@@ -19,6 +19,8 @@ tmp/
 virtualmin-backup/
 md/
 .ssh/
+.htpasswd
+.htaccess
 *.pem
 *_rsa
 *_ed25519

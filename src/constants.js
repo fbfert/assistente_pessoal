@@ -18,6 +18,16 @@
  */
 export const SEM_INFORMACAO = 'sem informação'
 
+/**
+ * Marcador de anonimização, usado quando um participante sai do piloto.
+ *
+ * É DELIBERADAMENTE distinto de SEM_INFORMACAO. Os dois significam coisas
+ * opostas: o sentinela diz "a pessoa não informou"; este diz "a pessoa
+ * informou, e nós apagamos". Usar o sentinela na anonimização falsearia o
+ * dado — afirmaria que alguém nunca respondeu algo que respondeu.
+ */
+export const REDIGIDO = '[redigido]'
+
 /** Tipos de gatilho do MVP. Novos tipos entram por necessidade relatada, não por calendário. */
 export const TIPOS_GATILHO = Object.freeze({
   CHECKIN_MANHA: 'checkin_manha',
@@ -33,6 +43,8 @@ export const TIPOS_INTERACAO = Object.freeze({
   SILENCIO: 'silencio',
   CORRECAO_REPORTADA: 'correcao_reportada',
   ANAMNESE: 'anamnese',
+  /** Escrita feita pelo operador no backend admin. Rastro de auditoria. */
+  ACAO_ADMIN: 'acao_admin',
 })
 
 /** Horários padrão dos gatilhos criados ao concluir a anamnese. */

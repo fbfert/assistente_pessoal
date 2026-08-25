@@ -6,6 +6,11 @@ import makeWASocket, {
 import qrcode from 'qrcode-terminal'
 import pino from 'pino'
 import { config } from '../config.js'
+import {
+  registrarQr,
+  registrarConectado,
+  registrarDesconectado,
+} from '../db/estadoConexaoRepo.js'
 
 const logger = pino({ level: 'warn' })
 
@@ -37,15 +42,25 @@ export async function conectarWhatsapp(aoReceberMensagem) {
     if (qr) {
       console.log('\nEscaneie o QR abaixo com o WhatsApp do chip DEDICADO do piloto:\n')
       qrcode.generate(qr, { small: true })
+      // Publica o QR BRUTO para o admin, que roda noutro container e só
+      // compartilha o volume do banco. Ele renderiza como imagem.
+      publicar(() => registrarQr(qr))
     }
 
     if (connection === 'open') {
       console.log('[whatsapp] conectado.')
+      publicar(registrarConectado)
       resolverConexao(sock)
     }
 
     if (connection === 'close') {
       const motivo = lastDisconnect?.error?.output?.statusCode
+
+      publicar(() =>
+        registrarDesconectado(
+          motivo === DisconnectReason.loggedOut ? 'loggedOut' : String(motivo ?? 'desconhecido'),
+        ),
+      )
 
       if (motivo === DisconnectReason.loggedOut) {
         console.error(
@@ -127,4 +142,19 @@ function comTimeout(promessa, ms) {
       setTimeout(() => reject(new Error(`Timeout de ${ms}ms esperando a conexão abrir`)), ms),
     ),
   ])
+}
+
+/**
+ * Publicação do estado de conexão para o admin.
+ *
+ * Envolvida em try/catch de propósito: se o banco estiver indisponível por
+ * qualquer motivo, o bot continua conectando e conversando. Perder a leitura
+ * do status no admin é incômodo; derrubar o bot por causa dela seria pior.
+ */
+function publicar(fn) {
+  try {
+    fn()
+  } catch (e) {
+    console.error('[whatsapp] falha ao publicar estado de conexão:', e?.message ?? e)
+  }
 }

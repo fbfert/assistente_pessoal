@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS usuarios (
   anamnese_estado         INTEGER NOT NULL DEFAULT 0
                                   CHECK (anamnese_estado BETWEEN 0 AND 12),
 
+  -- Pausa: suspende os disparos SEM alterar a configuracao dos gatilhos.
+  -- E filtro em listarGatilhosAtivos, nao desativacao individual: desativar
+  -- cada gatilho perderia a informacao de quais estavam ativos por decisao do
+  -- operador, e despausar restauraria o estado errado.
+  pausado                 INTEGER NOT NULL DEFAULT 0,
+
   -- Controle da anamnese.
   -- `anamnese_exemplo_pedido` é o flag de UMA tentativa extra no estado corrente:
   -- serve tanto para o pedido de exemplo concreto (resposta vaga) quanto para a
@@ -87,7 +93,8 @@ CREATE TABLE IF NOT EXISTS historico_interacoes (
   tipo                TEXT    NOT NULL
                               CHECK (tipo IN ('gatilho_disparado', 'resposta_gatilho',
                                               'despejo_espontaneo', 'silencio',
-                                              'correcao_reportada', 'anamnese')),
+                                              'correcao_reportada', 'anamnese',
+                                              'acao_admin')),
   timestamp           TEXT    NOT NULL,
   texto               TEXT,
   -- Tipo do gatilho a que esta linha se refere (disparo, resposta ou silêncio).
@@ -96,3 +103,17 @@ CREATE TABLE IF NOT EXISTS historico_interacoes (
 
 CREATE INDEX IF NOT EXISTS idx_historico_usuario_timestamp
   ON historico_interacoes (usuario_id, timestamp);
+
+-- Estado da conexao com o WhatsApp, publicado pelo processo do bot e lido pelo
+-- admin. Os dois sao containers separados que compartilham APENAS o volume do
+-- banco -- nao ha memoria, socket nem evento em comum.
+--
+-- O CHECK (id = 1) e o que garante linha unica no BANCO, nao na convencao.
+CREATE TABLE IF NOT EXISTS estado_conexao (
+  id                INTEGER PRIMARY KEY CHECK (id = 1),
+  conectado         INTEGER NOT NULL DEFAULT 0,
+  -- Texto BRUTO do QR, nao a imagem: quem renderiza e o admin.
+  qr_atual          TEXT,
+  motivo_desconexao TEXT,
+  atualizado_em     TEXT NOT NULL
+);
