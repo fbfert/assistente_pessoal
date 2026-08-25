@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { buscarPorId } from '../db/adminRepo.js'
 
 /**
  * Autenticação do backend administrativo.
@@ -105,17 +106,29 @@ export function limparCookie(res) {
 /** Rotas liberadas: login e health. Todo o resto exige sessão. */
 const LIVRES = new Set(['/login', '/health'])
 
+/** Alcançáveis com senha temporária pendente: só trocar a senha e sair. */
+const COM_PENDENCIA = new Set(['/conta', '/conta/senha', '/logout'])
+
 export function exigirSessao(req, res, next) {
   if (LIVRES.has(req.path)) return next()
 
   const cookie = lerCookie(req)
-  if (sessaoValida(cookie)) {
-    req.adminId = adminDaSessao(cookie)
-    return next()
+  if (!sessaoValida(cookie)) {
+    // Nenhum dado do piloto no corpo nem nos cabeçalhos desta resposta.
+    return res.redirect(302, '/login')
   }
 
-  // Nenhum dado do piloto no corpo nem nos cabeçalhos desta resposta.
-  return res.redirect(302, '/login')
+  req.adminId = adminDaSessao(cookie)
+
+  // Senha temporária pendente: a sessão existe, mas só alcança a troca. Sem
+  // isso a obrigação vira sugestão, e uma senha gerada por terceiro —
+  // possivelmente trafegada por chat — continuaria valendo indefinidamente.
+  const conta = req.adminId ? buscarPorId(req.adminId) : null
+  if (conta?.precisa_trocar_senha && !COM_PENDENCIA.has(req.path)) {
+    return res.redirect(302, '/conta')
+  }
+
+  next()
 }
 
 /** Log de falha SEM a senha tentada, nem em claro nem em forma reversível. */

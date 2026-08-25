@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { pagina, escapar } from '../html.js'
 import * as admins from '../../db/adminRepo.js'
+import { registrarAcaoAdmin, ACOES } from '../../db/auditoriaAdminRepo.js'
 import {
   criarSessao,
   encerrarSessao,
@@ -53,8 +54,15 @@ rotasLogin.post('/login', async (req, res) => {
       .send(telaLogin({ erro: 'E-mail ou senha incorretos.', email }))
   }
 
+  registrarAcaoAdmin({
+    autorId: conta.admin_id,
+    alvoId: conta.admin_id,
+    acao: ACOES.ENTROU,
+    descricao: `${conta.email} entrou`,
+  })
+
   definirCookie(req, res, criarSessao(conta.admin_id))
-  res.redirect(302, '/')
+  res.redirect(302, conta.precisa_trocar_senha ? '/conta' : '/')
 })
 
 rotasLogin.post('/logout', (req, res) => {

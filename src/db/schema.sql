@@ -131,6 +131,37 @@ CREATE TABLE IF NOT EXISTS admin_usuarios (
   -- depois nao invalida o que ja existe.
   senha_hash      TEXT    NOT NULL,
   ativo           INTEGER NOT NULL DEFAULT 1,
+  -- Senha temporaria pendente de troca. Enquanto valer 1, a sessao dessa conta
+  -- so alcanca a tela de troca de senha: sem isso a "obrigacao" vira sugestao e
+  -- uma senha gerada por terceiro continua valendo indefinidamente.
+  precisa_trocar_senha INTEGER NOT NULL DEFAULT 0,
   criado_em       TEXT    NOT NULL DEFAULT (datetime('now')),
   ultimo_login_em TEXT
 );
+
+-- Auditoria das acoes sobre a EQUIPE (criar, desativar, resetar senha).
+--
+-- Tabela separada de historico_interacoes de proposito: la o usuario_id e
+-- obrigatorio e referencia um participante, e criar um administrador nao tem
+-- participante associado. Tornar aquela coluna anulavel enfraqueceria a FK e
+-- quebraria a premissa de toda consulta existente, que assume a linha do tempo
+-- de uma pessoa. A divisao e semantica: quem abre a pagina de um participante
+-- quer o que aconteceu com ELE.
+--
+-- Append-only, como o outro log.
+CREATE TABLE IF NOT EXISTS auditoria_admin (
+  auditoria_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- Quem agiu. Sem ON DELETE: conta se desativa, nunca se apaga.
+  autor_id     INTEGER REFERENCES admin_usuarios(admin_id),
+  -- Conta afetada, quando houver.
+  alvo_id      INTEGER REFERENCES admin_usuarios(admin_id),
+  acao         TEXT    NOT NULL
+                       CHECK (acao IN ('criou', 'desativou', 'reativou',
+                                       'resetou_senha', 'trocou_propria_senha',
+                                       'entrou')),
+  descricao    TEXT    NOT NULL,
+  momento      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_auditoria_admin_momento
+  ON auditoria_admin (momento);

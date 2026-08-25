@@ -635,3 +635,169 @@ describe('estado de conexão', () => {
     assert.match(corpo, /http-equiv="refresh"/)
   })
 })
+
+
+describe('CRUD de administradores', () => {
+  let auditoria
+
+  before(async () => {
+    auditoria = await import('../src/db/auditoriaAdminRepo.js')
+    cookie = await autenticar()
+  })
+
+  beforeEach(() => {
+    // Mantém só a conta do operador entre os casos.
+    db.exec(`DELETE FROM auditoria_admin;
+             DELETE FROM admin_usuarios WHERE email != '${EMAIL}';
+             UPDATE admin_usuarios SET ativo = 1, precisa_trocar_senha = 0;`)
+  })
+
+  const criar = (nome, email) => post('/admins', { nome, email })
+
+  test('criar gera senha temporária exibida UMA vez', async () => {
+    const r = await criar('Fulano', 'fulano@xiax.com.br')
+    const corpo = await r.text()
+
+    const m = corpo.match(/<code style="font-size:1\.3rem">([^<]+)<\/code>/)
+    assert.ok(m, 'a senha gerada precisa aparecer nesta resposta')
+    const senha = m[1]
+
+    // ...e não em nenhuma tela posterior.
+    const depois = await (await get('/admins')).text()
+    assert.ok(!depois.includes(senha), 'a senha não pode reaparecer')
+
+    const conta = admins.buscarPorEmail('fulano@xiax.com.br', db)
+    assert.equal(conta.precisa_trocar_senha, 1)
+    assert.ok(await admins.autenticar('fulano@xiax.com.br', senha, db))
+  })
+
+  test('e-mail já usado é recusado', async () => {
+    await criar('Fulano', 'fulano@xiax.com.br')
+    const r = await criar('Outro', 'fulano@xiax.com.br')
+
+    assert.equal(r.status, 409)
+    assert.equal(admins.listarContas(db).filter((c) => c.email === 'fulano@xiax.com.br').length, 1)
+  })
+
+  test('e-mail inválido é recusado', async () => {
+    const r = await criar('Fulano', 'não é e-mail')
+
+    assert.equal(r.status, 400)
+    assert.equal(admins.listarContas(db).length, 1)
+  })
+
+  test('conta com pendência só alcança a troca de senha', async () => {
+    const r = await criar('Beltrano', 'beltrano@xiax.com.br')
+    const senha = (await r.text()).match(/<code style="font-size:1\.3rem">([^<]+)</)[1]
+
+    const login = await cru('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: 'beltrano@xiax.com.br', senha }),
+    })
+    assert.equal(login.headers.get('location'), '/conta', 'login já leva para a troca')
+    const c = login.headers.get('set-cookie').split(';')[0]
+
+    // Painel e detalhe ficam fora do alcance.
+    for (const rota of ['/', '/admins', '/conexao']) {
+      const bloqueado = await cru(rota, { headers: { cookie: c } })
+      assert.equal(bloqueado.status, 302, `${rota} deveria desviar`)
+      assert.equal(bloqueado.headers.get('location'), '/conta')
+    }
+
+    // Depois de trocar, libera.
+    await cru('/conta/senha', {
+      method: 'POST',
+      headers: { cookie: c, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ atual: senha, nova: 'senha-nova-forte', confirmacao: 'senha-nova-forte' }),
+    })
+    assert.equal(admins.buscarPorEmail('beltrano@xiax.com.br', db).precisa_trocar_senha, 0)
+  })
+
+  test('não é possível desativar a própria conta', async () => {
+    const eu = admins.buscarPorEmail(EMAIL, db)
+    const r = await post(`/admins/${eu.admin_id}/desativar`)
+
+    assert.equal(r.status, 409)
+    assert.equal(admins.buscarPorId(eu.admin_id, db).ativo, 1)
+  })
+
+  test('a última conta ativa é protegida', async () => {
+    const eu = admins.buscarPorEmail(EMAIL, db)
+    // Guarda de servidor, chamada direto: mesmo sem passar por quem age.
+    const r = admins.desativarConta(eu.admin_id, {}, db)
+
+    assert.equal(r.ok, false)
+    assert.match(r.erro, /última conta ativa/)
+    assert.equal(admins.contarAtivos(db), 1)
+  })
+
+  test('desativar e reativar outra conta', async () => {
+    await criar('Fulano', 'fulano@xiax.com.br')
+    const alvo = admins.buscarPorEmail('fulano@xiax.com.br', db)
+
+    await post(`/admins/${alvo.admin_id}/desativar`)
+    assert.equal(admins.buscarPorId(alvo.admin_id, db).ativo, 0)
+    assert.ok(admins.buscarPorId(alvo.admin_id, db), 'a linha NÃO é apagada')
+
+    await post(`/admins/${alvo.admin_id}/reativar`)
+    assert.equal(admins.buscarPorId(alvo.admin_id, db).ativo, 1)
+  })
+
+  test('reset gera senha nova e obriga a troca', async () => {
+    await criar('Fulano', 'fulano@xiax.com.br')
+    const alvo = admins.buscarPorEmail('fulano@xiax.com.br', db)
+    const hashAntes = alvo.senha_hash
+
+    const r = await post(`/admins/${alvo.admin_id}/resetar`)
+    const nova = (await r.text()).match(/<code style="font-size:1\.3rem">([^<]+)</)[1]
+
+    const depois = admins.buscarPorId(alvo.admin_id, db)
+    assert.notEqual(depois.senha_hash, hashAntes)
+    assert.equal(depois.precisa_trocar_senha, 1)
+    assert.ok(await admins.autenticar('fulano@xiax.com.br', nova, db))
+  })
+
+  test('auditoria de equipe registra autor, ação e alvo', async () => {
+    await criar('Fulano', 'fulano@xiax.com.br')
+    const linhas = auditoria.listarAuditoriaAdmin(10, db)
+
+    const criacao = linhas.find((l) => l.acao === 'criou')
+    assert.ok(criacao)
+    assert.equal(criacao.autor_email, EMAIL)
+    assert.match(criacao.descricao, /fulano@xiax\.com\.br/)
+  })
+
+  test('a senha gerada NUNCA entra no log de auditoria', async () => {
+    const r = await criar('Fulano', 'fulano@xiax.com.br')
+    const senha = (await r.text()).match(/<code style="font-size:1\.3rem">([^<]+)</)[1]
+
+    for (const l of auditoria.listarAuditoriaAdmin(50, db)) {
+      assert.ok(!l.descricao.includes(senha), 'senha vazou na auditoria')
+    }
+  })
+
+  test('ação sobre a equipe NÃO polui a linha do tempo dos participantes', async () => {
+    const antes = db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
+
+    await criar('Fulano', 'fulano@xiax.com.br')
+
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n, antes)
+  })
+
+  test('o autor continua identificado depois de desativado', async () => {
+    await criar('Fulano', 'fulano@xiax.com.br')
+    const alvo = admins.buscarPorEmail('fulano@xiax.com.br', db)
+    await post(`/admins/${alvo.admin_id}/desativar`)
+
+    const linhas = auditoria.listarAuditoriaAdmin(10, db)
+    assert.ok(linhas.every((l) => l.autor_email === EMAIL))
+  })
+
+  test('a listagem nunca mostra hash de senha', async () => {
+    await criar('Fulano', 'fulano@xiax.com.br')
+    const corpo = await (await get('/admins')).text()
+
+    assert.ok(!corpo.includes('scrypt$'))
+  })
+})

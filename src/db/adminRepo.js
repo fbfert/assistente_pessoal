@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { getDb } from './db.js'
 import { gerarHash, conferirHash, queimarTempo } from '../dashboard/senha.js'
 
@@ -25,12 +26,61 @@ export function listarContas(db = getDb()) {
   return db.prepare('SELECT * FROM admin_usuarios ORDER BY admin_id').all()
 }
 
-export async function criarConta({ nome, email, senha }, db = getDb()) {
+export async function criarConta({ nome, email, senha, precisaTrocar = false }, db = getDb()) {
   const hash = await gerarHash(senha)
   const { lastInsertRowid } = db
-    .prepare('INSERT INTO admin_usuarios (nome, email, senha_hash) VALUES (?, ?, ?)')
-    .run(nome, String(email).trim(), hash)
+    .prepare(
+      'INSERT INTO admin_usuarios (nome, email, senha_hash, precisa_trocar_senha) VALUES (?, ?, ?, ?)',
+    )
+    .run(nome, String(email).trim(), hash, precisaTrocar ? 1 : 0)
   return buscarPorId(lastInsertRowid, db)
+}
+
+/**
+ * Senha temporária, gerada pelo sistema.
+ *
+ * Quem cria a conta NÃO escolhe a senha do outro: isso produziria senha fraca,
+ * conhecida por duas pessoas, que a segunda nunca troca. Ela é exibida uma única
+ * vez e a conta nasce obrigada a trocá-la.
+ */
+export function gerarSenhaTemporaria() {
+  return randomBytes(12).toString('base64url')
+}
+
+/** Cria com senha temporária. Devolve a conta E a senha em claro, uma única vez. */
+export async function criarComSenhaTemporaria({ nome, email }, db = getDb()) {
+  if (buscarPorEmail(email, db)) {
+    return { ok: false, erro: 'Já existe uma conta com esse e-mail.' }
+  }
+
+  const senha = gerarSenhaTemporaria()
+  const conta = await criarConta({ nome, email, senha, precisaTrocar: true }, db)
+  return { ok: true, conta, senhaTemporaria: senha }
+}
+
+/**
+ * Reset: o caminho de recuperação, no lugar do e-mail que não existe.
+ * Mesma mecânica da criação — temporária, exibida uma vez, troca obrigatória.
+ */
+export async function resetarSenha(adminId, db = getDb()) {
+  const conta = buscarPorId(adminId, db)
+  if (!conta) return { ok: false, erro: 'conta não encontrada' }
+
+  const senha = gerarSenhaTemporaria()
+  db.prepare(
+    'UPDATE admin_usuarios SET senha_hash = ?, precisa_trocar_senha = 1 WHERE admin_id = ?',
+  ).run(await gerarHash(senha), adminId)
+
+  return { ok: true, senhaTemporaria: senha }
+}
+
+export function contarAtivos(db = getDb()) {
+  return db.prepare('SELECT COUNT(*) AS n FROM admin_usuarios WHERE ativo = 1').get().n
+}
+
+export function reativarConta(adminId, db = getDb()) {
+  db.prepare('UPDATE admin_usuarios SET ativo = 1 WHERE admin_id = ?').run(adminId)
+  return buscarPorId(adminId, db)
 }
 
 /**
@@ -69,18 +119,34 @@ export async function trocarSenha(adminId, senhaAtual, senhaNova, db = getDb()) 
     return { ok: false, erro: 'A senha nova precisa ter pelo menos 8 caracteres.' }
   }
 
-  db.prepare('UPDATE admin_usuarios SET senha_hash = ? WHERE admin_id = ?').run(
-    await gerarHash(senhaNova),
-    adminId,
-  )
+  db.prepare(
+    'UPDATE admin_usuarios SET senha_hash = ?, precisa_trocar_senha = 0 WHERE admin_id = ?',
+  ).run(await gerarHash(senhaNova), adminId)
   return { ok: true }
 }
 
-export function desativarConta(adminId, db = getDb()) {
-  // Desativa, não apaga: a auditoria precisa continuar podendo nomear o autor
-  // de ações passadas.
+/**
+ * Desativa, não apaga: a auditoria precisa continuar podendo nomear o autor de
+ * ações passadas.
+ *
+ * As duas guardas são de SERVIDOR, não de interface. Esconder o botão não basta:
+ * sem administrador ativo não há quem crie o próximo, e a única saída seria
+ * recriar o banco.
+ */
+export function desativarConta(adminId, { porAdminId = null } = {}, db = getDb()) {
+  const conta = buscarPorId(adminId, db)
+  if (!conta) return { ok: false, erro: 'conta não encontrada' }
+
+  if (porAdminId !== null && Number(porAdminId) === Number(adminId)) {
+    return { ok: false, erro: 'Você não pode desativar a própria conta.' }
+  }
+
+  if (conta.ativo && contarAtivos(db) <= 1) {
+    return { ok: false, erro: 'Esta é a última conta ativa. Desativá-la trancaria todo mundo para fora.' }
+  }
+
   db.prepare('UPDATE admin_usuarios SET ativo = 0 WHERE admin_id = ?').run(adminId)
-  return buscarPorId(adminId, db)
+  return { ok: true, conta: buscarPorId(adminId, db) }
 }
 
 /**

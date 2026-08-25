@@ -2,6 +2,7 @@ import { Router } from 'express'
 import * as admins from '../../db/adminRepo.js'
 import { encerrarSessoesDe } from '../auth.js'
 import { pagina, escapar } from '../html.js'
+import { registrarAcaoAdmin, ACOES } from '../../db/auditoriaAdminRepo.js'
 
 export const rotasConta = Router()
 
@@ -12,6 +13,12 @@ function tela(conta, { erro = null, ok = false } = {}) {
      <p class="nota">${escapar(conta.email)} · último login:
        ${escapar(conta.ultimo_login_em ?? 'este agora')}</p>
 
+     ${
+       conta.precisa_trocar_senha
+         ? `<div class="aviso"><strong>Você está com uma senha temporária.</strong>
+            Troque-a agora — até lá, esta é a única página que você alcança.</div>`
+         : ''
+     }
      ${erro ? `<div class="aviso">${escapar(erro)}</div>` : ''}
      ${ok ? '<p><strong>Senha trocada.</strong> As outras sessões foram encerradas.</p>' : ''}
 
@@ -59,6 +66,13 @@ rotasConta.post('/conta/senha', async (req, res) => {
 
   // Trocar a senha derruba as outras sessões: se a troca foi por suspeita de
   // acesso indevido, deixar a sessão do invasor viva anularia o motivo.
+  registrarAcaoAdmin({
+    autorId: conta.admin_id,
+    alvoId: conta.admin_id,
+    acao: ACOES.TROCOU_PROPRIA_SENHA,
+    descricao: `${conta.email} trocou a própria senha`,
+  })
+
   encerrarSessoesDe(conta.admin_id)
 
   res.type('html').send(tela(admins.buscarPorId(conta.admin_id), { ok: true }))

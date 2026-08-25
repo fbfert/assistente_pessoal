@@ -123,6 +123,25 @@ Por túnel SSH só a segunda existe — o Apache não está no caminho.
 **Trocar a senha do admin:** entre e vá em *Minha conta*. Pede a senha atual, e a
 troca encerra as demais sessões daquela conta.
 
+### Contas da equipe
+
+Em *Administradores* dá para criar, desativar, reativar e resetar senha.
+
+- **Criar** não pede senha: o sistema gera uma temporária e a mostra **uma única
+  vez**. Anote e entregue à pessoa — ela não é recuperável depois, nem no log.
+  Quem entrar com ela só alcança a tela de troca até trocá-la.
+- **Resetar** é o caminho de recuperação de acesso. Não há servidor de e-mail, então
+  quem perdeu a senha depende de outro administrador ativo gerar uma nova.
+- **Desativar** nunca apaga a conta — a auditoria precisa continuar podendo nomear
+  quem fez o quê. Duas guardas de servidor: ninguém desativa a própria conta, e a
+  última conta ativa é protegida.
+
+Não há hierarquia de permissão: toda conta vê e edita tudo, por decisão registrada.
+
+**Onde fica a auditoria.** Ação sobre participante fica na página dele; ação sobre
+contas da equipe fica em *Administradores*. São linhas do tempo diferentes de
+propósito — quem abre a página de um participante quer o que aconteceu com ele.
+
 ### Bootstrap: ninguém fica trancado para fora
 
 Na primeira subida, se não houver nenhuma conta, uma é criada a partir de
