@@ -1,5 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual, createHash } from 'node:crypto'
-import { config } from '../config.js'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 
 /**
  * Autenticação do backend administrativo.
@@ -23,49 +22,20 @@ const VALIDADE_MS = 12 * 60 * 60 * 1000 // 12h
 // meio-válido.
 const SEGREDO = randomBytes(32)
 
-/** token -> criadaEm */
+/** token -> { criadaEm, adminId } */
 const sessoes = new Map()
-
-/**
- * O processo NÃO sobe sem senha configurada. Um admin que sobe desprotegido por
- * variável faltando é pior que um admin que não sobe: o primeiro expõe dado de
- * saúde sem que ninguém perceba.
- */
-export function exigirSenhaConfigurada() {
-  if (!config.dashboard.adminPassword) {
-    throw new Error(
-      'ADMIN_PASSWORD não configurada. O backend administrativo não sobe sem senha — ' +
-        'defina a variável no .env antes de iniciar.',
-    )
-  }
-}
-
-/**
- * Comparação em tempo constante.
- *
- * Compara os digests SHA-256, não as senhas cruas: `timingSafeEqual` lança
- * quando os buffers têm tamanhos diferentes, e o próprio lançamento vazaria o
- * tamanho da senha correta. O digest tem sempre 32 bytes.
- *
- * NUNCA use `===` aqui: comparação curto-circuitada revela, por diferença de
- * tempo, o tamanho do prefixo correto.
- */
-export function senhaConfere(enviada) {
-  const esperada = config.dashboard.adminPassword
-  if (!esperada) return false
-
-  const a = createHash('sha256').update(String(enviada ?? ''), 'utf8').digest()
-  const b = createHash('sha256').update(esperada, 'utf8').digest()
-
-  return timingSafeEqual(a, b)
-}
 
 const assinar = (token) => createHmac('sha256', SEGREDO).update(token).digest('hex')
 
-export function criarSessao() {
+export function criarSessao(adminId) {
   const token = randomBytes(24).toString('hex')
-  sessoes.set(token, Date.now())
+  sessoes.set(token, { criadaEm: Date.now(), adminId })
   return `${token}.${assinar(token)}`
+}
+
+/** Encerra todas as sessões de uma conta — usado após troca de senha. */
+export function encerrarSessoesDe(adminId) {
+  for (const [token, s] of sessoes) if (s.adminId === adminId) sessoes.delete(token)
 }
 
 export function encerrarSessao(valorCookie) {
@@ -85,15 +55,22 @@ export function sessaoValida(valorCookie) {
   if (esperada.length !== recebida.length) return false
   if (!timingSafeEqual(esperada, recebida)) return false
 
-  const criadaEm = sessoes.get(token)
-  if (!criadaEm) return false
+  const sessao = sessoes.get(token)
+  if (!sessao) return false
 
-  if (Date.now() - criadaEm > VALIDADE_MS) {
+  if (Date.now() - sessao.criadaEm > VALIDADE_MS) {
     sessoes.delete(token)
     return false
   }
 
   return true
+}
+
+/** Conta que originou a sessão, ou null. É o que permite a auditoria nomear o autor. */
+export function adminDaSessao(valorCookie) {
+  if (!sessaoValida(valorCookie)) return null
+  const token = String(valorCookie).split('.')[0]
+  return sessoes.get(token)?.adminId ?? null
 }
 
 /** Parse do header Cookie — evita a dependência `cookie-parser` para uma linha. */
@@ -131,16 +108,20 @@ const LIVRES = new Set(['/login', '/health'])
 export function exigirSessao(req, res, next) {
   if (LIVRES.has(req.path)) return next()
 
-  if (sessaoValida(lerCookie(req))) return next()
+  const cookie = lerCookie(req)
+  if (sessaoValida(cookie)) {
+    req.adminId = adminDaSessao(cookie)
+    return next()
+  }
 
   // Nenhum dado do piloto no corpo nem nos cabeçalhos desta resposta.
   return res.redirect(302, '/login')
 }
 
 /** Log de falha SEM a senha tentada, nem em claro nem em forma reversível. */
-export function registrarFalhaDeLogin(req) {
+export function registrarFalhaDeLogin(req, email) {
   const origem = req.ip ?? req.socket?.remoteAddress ?? 'desconhecida'
-  console.warn(`[admin] tentativa de login malsucedida de ${origem}`)
+  console.warn(`[admin] login malsucedido para "${email ?? '(sem e-mail)'}" de ${origem}`)
 }
 
 /** Só para teste: limpa o estado de sessão entre casos. */

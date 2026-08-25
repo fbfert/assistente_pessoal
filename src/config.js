@@ -72,7 +72,13 @@ export const config = {
     // em .env.example, docker-compose.yml, README e no container que ja esta
     // rodando -- churn sem ganho, com risco de deixar as duas formas
     // coexistindo por acidente.
+    // Semente do BOOTSTRAP, não credencial de login. Depois que a conta
+    // inicial existe, entrar é por e-mail + senha da conta. Manter os dois
+    // caminhos vivos seria o pior dos dois mundos: uma senha compartilhada e
+    // eterna convivendo com contas nominais, e a identificação sumindo sem
+    // ninguém notar.
     adminPassword: process.env.ADMIN_PASSWORD || '',
+    bootstrapEmail: process.env.ADMIN_BOOTSTRAP_EMAIL || '',
   },
 
   // Os dois números "no chute" do piloto. Existem como env justamente porque

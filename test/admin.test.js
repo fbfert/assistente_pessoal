@@ -7,10 +7,12 @@ import { join } from 'node:path'
 // A senha precisa existir ANTES de config.js ser avaliado — daí os imports
 // dinâmicos abaixo, em vez de estáticos (que são içados para antes desta linha).
 const SENHA = 'senha-de-teste-do-admin'
+const EMAIL = 'operador@xiax.com.br'
 process.env.ADMIN_PASSWORD = SENHA
+process.env.ADMIN_BOOTSTRAP_EMAIL = EMAIL
 
 let dir, db, servidor, base
-let repo, log, conexaoRepo, constantes, queries
+let repo, log, conexaoRepo, constantes, queries, admins
 
 before(async () => {
   const { abrirDb } = await import('../src/db/db.js')
@@ -22,6 +24,9 @@ before(async () => {
   conexaoRepo = await import('../src/db/estadoConexaoRepo.js')
   constantes = await import('../src/constants.js')
   queries = await import('../src/dashboard/queries.js')
+
+  admins = await import('../src/db/adminRepo.js')
+  await admins.bootstrap({ email: EMAIL, senha: SENHA })
 
   const { app } = await import('../src/dashboard/server.js')
   servidor = app.listen(0)
@@ -40,6 +45,7 @@ beforeEach(() => {
   db.exec('DELETE FROM historico_interacoes; DELETE FROM contadores; DELETE FROM despejos_semana;')
   db.exec('DELETE FROM gatilhos_configurados; DELETE FROM remedios; DELETE FROM usuarios;')
   db.exec('DELETE FROM estado_conexao;')
+  // admin_usuarios NAO e limpo: a conta do operador precisa sobreviver aos casos.
 })
 
 // --- utilitários ---------------------------------------------------------------
@@ -51,7 +57,7 @@ async function autenticar() {
   const r = await cru('/login', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ senha: SENHA }),
+    body: new URLSearchParams({ email: EMAIL, senha: SENHA }),
   })
   const cookie = r.headers.get('set-cookie').split(';')[0]
   return cookie
@@ -113,7 +119,7 @@ describe('autenticação', () => {
     const r = await cru('/login', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ senha: 'errada' }),
+      body: new URLSearchParams({ email: EMAIL, senha: 'errada' }),
     })
 
     assert.equal(r.status, 401)
@@ -132,7 +138,7 @@ describe('autenticação', () => {
     const r = await cru('/login', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ senha: SENHA }),
+      body: new URLSearchParams({ email: EMAIL, senha: SENHA }),
     })
     const set = r.headers.get('set-cookie')
 
@@ -153,23 +159,73 @@ describe('autenticação', () => {
     }
   })
 
-  test('comparação de senha não quebra com tamanhos diferentes', async () => {
-    const { senhaConfere } = await import('../src/dashboard/auth.js')
+  test('verificação de senha não quebra com tamanhos diferentes', async () => {
+    const { gerarHash, conferirHash } = await import('../src/dashboard/senha.js')
+    const h = await gerarHash(SENHA)
 
-    assert.equal(senhaConfere('x'), false)
-    assert.equal(senhaConfere(''), false)
-    assert.equal(senhaConfere(undefined), false)
-    assert.equal(senhaConfere(SENHA), true)
+    assert.equal(await conferirHash('x', h), false)
+    assert.equal(await conferirHash('', h), false)
+    assert.equal(await conferirHash(SENHA, h), true)
+    assert.equal(await conferirHash(SENHA, 'lixo'), false)
   })
 
-  test('processo recusa subir sem ADMIN_PASSWORD', async () => {
-    const { exigirSenhaConfigurada } = await import('../src/dashboard/auth.js')
-    const { config } = await import('../src/config.js')
+  test('e-mail inexistente é recusado como qualquer outra falha', async () => {
+    const r = await cru('/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: 'ninguem@lugar.nenhum', senha: SENHA }),
+    })
 
-    const antes = config.dashboard.adminPassword
-    config.dashboard.adminPassword = ''
-    assert.throws(() => exigirSenhaConfigurada(), /ADMIN_PASSWORD/)
-    config.dashboard.adminPassword = antes
+    assert.equal(r.status, 401)
+    assert.match(await r.text(), /E-mail ou senha incorretos/)
+  })
+
+  test('a senha nunca é armazenada de forma recuperável', () => {
+    const conta = admins.buscarPorEmail(EMAIL, db)
+
+    assert.ok(!conta.senha_hash.includes(SENHA))
+    assert.match(conta.senha_hash, /^scrypt\$/)
+  })
+
+  test('conta inativa não autentica', async () => {
+    const criada = await admins.criarConta(
+      { nome: 'Fulano', email: 'inativo@xiax.com.br', senha: 'senha-forte-1' },
+      db,
+    )
+    admins.desativarConta(criada.admin_id, db)
+
+    assert.equal(await admins.autenticar('inativo@xiax.com.br', 'senha-forte-1', db), null)
+  })
+
+  test('bootstrap não recria nem mexe na senha existente', async () => {
+    const antes = admins.buscarPorEmail(EMAIL, db).senha_hash
+    const r = await admins.bootstrap({ email: EMAIL, senha: 'outra-coisa' }, db)
+
+    assert.equal(r.criada, false)
+    assert.equal(admins.buscarPorEmail(EMAIL, db).senha_hash, antes)
+  })
+
+  test('trocar a própria senha exige a atual', async () => {
+    const conta = admins.buscarPorEmail(EMAIL, db)
+
+    const ruim = await admins.trocarSenha(conta.admin_id, 'errada', 'senha-nova-123', db)
+    assert.equal(ruim.ok, false)
+    assert.equal(await admins.autenticar(EMAIL, SENHA, db) !== null, true)
+
+    const bom = await admins.trocarSenha(conta.admin_id, SENHA, 'senha-nova-123', db)
+    assert.equal(bom.ok, true)
+    assert.equal(await admins.autenticar(EMAIL, 'senha-nova-123', db) !== null, true)
+
+    // devolve ao estado original para não quebrar os casos seguintes
+    await admins.trocarSenha(conta.admin_id, 'senha-nova-123', SENHA, db)
+  })
+
+  test('senha nova curta demais é recusada', async () => {
+    const conta = admins.buscarPorEmail(EMAIL, db)
+    const r = await admins.trocarSenha(conta.admin_id, SENHA, 'curta', db)
+
+    assert.equal(r.ok, false)
+    assert.match(r.erro, /8 caracteres/)
   })
 })
 
@@ -262,6 +318,7 @@ describe('escrita e auditoria', () => {
     assert.match(a[0].texto, /nome/)
     assert.match(a[0].texto, /Ana/)
     assert.match(a[0].texto, /Ana Paula/)
+    assert.match(a[0].texto, new RegExp(`\\[por ${EMAIL}\\]`), 'a auditoria precisa nomear o autor')
   })
 
   test('campo fora da whitelist é recusado sem alterar nada', async () => {

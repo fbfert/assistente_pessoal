@@ -1,12 +1,4 @@
-# admin-autenticacao Specification
-
-## Purpose
-
-Proteger a superfície de operação do piloto com uma camada de autenticação que viaja
-junto com o código. O bind em loopback basta para leitura; escrita sobre dado de saúde
-de pessoas identificadas exige saber quem está do outro lado.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Senha única de operador
 
@@ -82,22 +74,6 @@ O estado de sessão SHALL viver na memória do processo, sem banco de sessão ex
 - **WHEN** o processo do admin reinicia
 - **THEN** as sessões anteriores deixam de ser válidas
 
-### Requirement: Proteção de todas as rotas exceto login e health
-
-O admin SHALL exigir sessão válida em toda rota, com exceção da rota de login e da rota
-de health.
-
-Requisição sem sessão válida a uma rota protegida SHALL ser redirecionada para o login,
-e SHALL NOT expor qualquer dado do piloto no corpo ou nos cabeçalhos da resposta.
-
-#### Scenario: Rota de detalhe sem sessão
-- **WHEN** alguém sem sessão acessa a página de detalhe de um usuário
-- **THEN** recebe redirecionamento para o login e nenhum dado da pessoa é exposto
-
-#### Scenario: Health continua público
-- **WHEN** a rota de health é acessada sem sessão
-- **THEN** ela responde normalmente, sem expor dado do piloto
-
 ### Requirement: Registro de tentativa de autenticação falha
 
 O admin SHALL registrar em log toda tentativa de autenticação malsucedida,
@@ -108,6 +84,8 @@ O log SHALL NOT conter a senha tentada, nem em texto claro nem em forma reversí
 #### Scenario: Falha registrada sem vazar a tentativa
 - **WHEN** uma autenticação falha
 - **THEN** o log registra o e-mail e a origem, e não contém a senha enviada
+
+## ADDED Requirements
 
 ### Requirement: Bootstrap da conta inicial
 

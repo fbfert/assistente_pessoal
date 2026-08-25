@@ -2,13 +2,15 @@ import express from 'express'
 import { pathToFileURL } from 'node:url'
 import { config } from '../config.js'
 import { getDb } from '../db/db.js'
-import { exigirSenhaConfigurada, exigirSessao } from './auth.js'
+import { exigirSessao } from './auth.js'
 import { pagina, escapar } from './html.js'
 import { rotasLogin } from './rotas/login.js'
 import { rotasPainel, renderizar } from './rotas/painel.js'
 import { rotasUsuario, renderizarDetalhe } from './rotas/usuario.js'
 import { rotasAcoes } from './rotas/acoes.js'
 import { rotasConexao, renderizarConexao } from './rotas/conexao.js'
+import { rotasConta } from './rotas/conta.js'
+import * as admins from '../db/adminRepo.js'
 
 /**
  * Backend administrativo do piloto.
@@ -33,6 +35,7 @@ export function montarApp() {
   app.use(rotasUsuario)
   app.use(rotasAcoes)
   app.use(rotasConexao)
+  app.use(rotasConta)
 
   // Erro não tratado vira página legível em vez de stack trace nu. Sem isto,
   // uma coluna faltando no banco devolve 500 em branco e o operador não tem
@@ -60,10 +63,25 @@ export const app = montarApp()
 // Só sobe o servidor quando o arquivo é o entrypoint — assim os renderizadores
 // podem ser importados por teste sem abrir porta nenhuma.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  // O admin NÃO sobe sem senha: um admin desprotegido por variável faltando
-  // expõe dado de saúde sem que ninguém perceba.
-  exigirSenhaConfigurada()
+  // Top-level await: o bootstrap precisa terminar antes de aceitar requisição.
   getDb()
+
+  // Bootstrap: sem nenhuma conta, cria a inicial a partir do ambiente. Existe
+  // para que um deploy limpo não deixe o operador trancado para fora. Com conta
+  // já criada, não faz nada — nem recria, nem mexe na senha existente.
+  const r = await admins.bootstrap({
+    email: config.dashboard.bootstrapEmail,
+    senha: config.dashboard.adminPassword,
+  })
+
+  if (r.faltando) {
+    // Um admin que sobe sem nenhuma conta é um admin sem porta de entrada.
+    throw new Error(
+      'Nenhuma conta de administrador existe e falta a semente de bootstrap. ' +
+        'Defina ADMIN_BOOTSTRAP_EMAIL e ADMIN_PASSWORD no .env antes de iniciar.',
+    )
+  }
+  if (r.criada) console.log(`[admin] conta inicial criada para ${r.conta.email}`)
 
   // Bind explícito: o admin exibe o histórico completo de conversas e permite
   // escrita sobre dado de saúde. Ver openspec/specs/dashboard-piloto.

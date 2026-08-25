@@ -4,6 +4,7 @@ import { registrar } from '../../db/interactionLog.js'
 import { convidarPiloto } from '../../admin/convidarPiloto.js'
 import { pagina, escapar, rotuloGatilho } from '../html.js'
 import { SEM_INFORMACAO, TIPOS_INTERACAO } from '../../constants.js'
+import { buscarPorId } from '../../db/adminRepo.js'
 
 export const rotasAcoes = Router()
 
@@ -15,8 +16,13 @@ export const rotasAcoes = Router()
  * qualquer outra interação daquela pessoa. Texto livre, como o resto do
  * histórico: é lido por gente, não por máquina.
  */
-function auditar(usuarioId, texto) {
-  registrar({ usuarioId, tipo: TIPOS_INTERACAO.ACAO_ADMIN, texto })
+function auditar(req, usuarioId, texto) {
+  const autor = req.adminId ? buscarPorId(req.adminId)?.email : null
+  registrar({
+    usuarioId,
+    tipo: TIPOS_INTERACAO.ACAO_ADMIN,
+    texto: `${texto} [por ${autor ?? 'admin não identificado'}]`,
+  })
 }
 
 const voltar = (res, usuarioId) => res.redirect(302, `/usuarios/${usuarioId}`)
@@ -52,7 +58,7 @@ rotasAcoes.post('/convidar', async (req, res) => {
   }
 
   const usuario = await convidarPiloto(numero, naoEnviaDaqui)
-  auditar(usuario.usuario_id, `participante ${numero} convidado via admin`)
+  auditar(req, usuario.usuario_id, `participante ${numero} convidado via admin`)
   voltar(res, usuario.usuario_id)
 })
 
@@ -71,7 +77,7 @@ rotasAcoes.post('/usuarios/:id/reenviar-convite', async (req, res) => {
   }
 
   await convidarPiloto(usuario.numero_whatsapp, naoEnviaDaqui)
-  auditar(usuario.usuario_id, 'convite reenviado via admin')
+  auditar(req, usuario.usuario_id, 'convite reenviado via admin')
   voltar(res, usuario.usuario_id)
 })
 
@@ -95,7 +101,7 @@ rotasAcoes.post('/usuarios/:id/campo', (req, res) => {
     )
   }
 
-  auditar(
+  auditar(req, 
     usuario.usuario_id,
     `campo ${campo} alterado de "${anterior ?? SEM_INFORMACAO}" para "${valor}" via admin`,
   )
@@ -115,7 +121,7 @@ rotasAcoes.post('/usuarios/:id/remedio/:remedioId', (req, res) => {
     req.body?.horario,
   )
 
-  auditar(
+  auditar(req, 
     anterior.usuario_id,
     `remédio "${anterior.nome}" (${anterior.horario}) alterado para ` +
       `"${atualizado.nome}" (${atualizado.horario}) via admin`,
@@ -145,7 +151,7 @@ rotasAcoes.post('/usuarios/:id/remedio/:remedioId/remover', (req, res) => {
   if (!remedio) return res.status(404).send('remédio não encontrado')
 
   repo.removerRemedio(remedio.remedio_id)
-  auditar(remedio.usuario_id, `remédio "${remedio.nome}" (${remedio.horario}) removido via admin`)
+  auditar(req, remedio.usuario_id, `remédio "${remedio.nome}" (${remedio.horario}) removido via admin`)
   voltar(res, remedio.usuario_id)
 })
 
@@ -172,7 +178,7 @@ rotasAcoes.post('/usuarios/:id/gatilho/:gatilhoId', (req, res) => {
   if (horario !== anterior.horario) mudancas.push(`horário ${anterior.horario} → ${horario}`)
   if (ativo !== Boolean(anterior.ativo)) mudancas.push(ativo ? 'ativado' : 'desativado')
 
-  auditar(
+  auditar(req, 
     anterior.usuario_id,
     `gatilho ${rotuloGatilho(anterior.tipo)} (${anterior.horario}) ${
       mudancas.join(', ') || 'salvo sem alteração'
@@ -191,7 +197,7 @@ rotasAcoes.post('/usuarios/:id/silencio/:tipo', (req, res) => {
   const antes = repo.getSilencioConsecutivo(usuario.usuario_id, tipo)
   repo.zerarSilencio(usuario.usuario_id, tipo)
 
-  auditar(
+  auditar(req, 
     usuario.usuario_id,
     `contador de silêncio de ${rotuloGatilho(tipo)} zerado (estava em ${antes}) via admin`,
   )
@@ -207,7 +213,7 @@ rotasAcoes.post('/usuarios/:id/pausa', (req, res) => {
   const pausar = req.body?.pausado === '1'
   repo.setPausado(usuario.usuario_id, pausar)
 
-  auditar(usuario.usuario_id, `participante ${pausar ? 'pausado' : 'despausado'} via admin`)
+  auditar(req, usuario.usuario_id, `participante ${pausar ? 'pausado' : 'despausado'} via admin`)
   voltar(res, usuario.usuario_id)
 })
 
@@ -243,7 +249,7 @@ rotasAcoes.post('/usuarios/:id/reiniciar', (req, res) => {
   if (!usuario) return res.status(404).send('não encontrado')
 
   repo.reiniciarAnamnese(usuario.usuario_id)
-  auditar(usuario.usuario_id, 'anamnese reiniciada do zero via admin')
+  auditar(req, usuario.usuario_id, 'anamnese reiniciada do zero via admin')
   voltar(res, usuario.usuario_id)
 })
 
@@ -279,7 +285,7 @@ rotasAcoes.post('/usuarios/:id/anonimizar', (req, res) => {
   // A auditoria vem ANTES: a anonimização redige o texto de todas as
   // interações existentes, e uma linha gravada depois preserva o motivo.
   repo.anonimizarParticipante(usuario.usuario_id)
-  auditar(usuario.usuario_id, 'participante anonimizado via admin — pedido de saída do piloto')
+  auditar(req, usuario.usuario_id, 'participante anonimizado via admin — pedido de saída do piloto')
 
   res.redirect(302, '/')
 })

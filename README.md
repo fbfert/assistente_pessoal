@@ -107,15 +107,40 @@ vermelho — é o sinal de que alguém está sumindo.
 O dashboard não é só leitura: é a superfície de operação do piloto. Ele existe
 para tirar a operação do `docker compose exec` + SQL manual.
 
+### Como entrar
+
+Login por **e-mail e senha**, com contas em `admin_usuarios`. Se você abre pelo
+domínio, o navegador pede credencial **duas vezes** — são camadas diferentes, e
+podem ter senhas diferentes:
+
+| Quem pergunta | O que é | Onde se troca |
+|---|---|---|
+| Caixa do navegador, antes da página | Basic Auth do Apache (`.htaccess`) | `htpasswd -b /home/tdah/.htpasswd <email>` no servidor |
+| Formulário dentro da página | Conta do admin | `/conta`, dentro do próprio admin |
+
+Por túnel SSH só a segunda existe — o Apache não está no caminho.
+
+**Trocar a senha do admin:** entre e vá em *Minha conta*. Pede a senha atual, e a
+troca encerra as demais sessões daquela conta.
+
+### Bootstrap: ninguém fica trancado para fora
+
+Na primeira subida, se não houver nenhuma conta, uma é criada a partir de
+`ADMIN_BOOTSTRAP_EMAIL` e `ADMIN_PASSWORD`. **Depois disso `ADMIN_PASSWORD` não é
+mais aceita no login** — entrar passa a ser pela senha da conta.
+
+Se o banco for recriado, o bootstrap roda de novo e a conta volta com a senha do
+`.env`. Se você já tinha trocado a senha em `/conta`, ela se perde nesse caso.
+
 ### Duas camadas de proteção
 
 1. **Bind em loopback** — o processo nunca é alcançável da rede pública.
-2. **Senha de operador** (`ADMIN_PASSWORD`) — obrigatória. O processo **se recusa
-   a subir sem ela**, em vez de subir desprotegido.
+2. **Conta de administrador** — e-mail e senha, com hash `scrypt` e sal por conta.
 
-A senha existe porque o admin exibe o histórico completo das conversas e permite
-**escrita** sobre dado de saúde. O bind protege contra a rede; a senha protege
-contra quem já está do lado de dentro do túnel.
+A conta existe porque o admin exibe o histórico completo das conversas e permite
+**escrita** sobre dado de saúde. O bind protege contra a rede; a conta protege
+contra quem já está do lado de dentro do túnel — e diz **quem** fez cada
+alteração, o que uma senha compartilhada não faz.
 
 ### O que dá para fazer
 

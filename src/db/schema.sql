@@ -117,3 +117,20 @@ CREATE TABLE IF NOT EXISTS estado_conexao (
   motivo_desconexao TEXT,
   atualizado_em     TEXT NOT NULL
 );
+
+-- Contas do backend administrativo. Nada aqui e dado de participante: e a
+-- equipe que opera o piloto.
+--
+-- Conta se DESATIVA, nao se apaga: a auditoria precisa continuar podendo nomear
+-- o autor de acoes passadas.
+CREATE TABLE IF NOT EXISTS admin_usuarios (
+  admin_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome            TEXT    NOT NULL,
+  email           TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+  -- Formato autodescritivo: scrypt$N$r$p$salt$hash. Trocar de parametros
+  -- depois nao invalida o que ja existe.
+  senha_hash      TEXT    NOT NULL,
+  ativo           INTEGER NOT NULL DEFAULT 1,
+  criado_em       TEXT    NOT NULL DEFAULT (datetime('now')),
+  ultimo_login_em TEXT
+);
