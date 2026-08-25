@@ -5,6 +5,7 @@ import { convidarPiloto } from '../../admin/convidarPiloto.js'
 import { pagina, escapar, rotuloGatilho } from '../html.js'
 import { SEM_INFORMACAO, TIPOS_INTERACAO } from '../../constants.js'
 import { buscarPorId } from '../../db/adminRepo.js'
+import { PERSONALIDADES } from '../../llm/prompts.js'
 
 export const rotasAcoes = Router()
 
@@ -104,6 +105,37 @@ rotasAcoes.post('/usuarios/:id/campo', (req, res) => {
   auditar(req, 
     usuario.usuario_id,
     `campo ${campo} alterado de "${anterior ?? SEM_INFORMACAO}" para "${valor}" via admin`,
+  )
+  voltar(res, usuario.usuario_id)
+})
+
+// --- Personalidade ----------------------------------------------------------------
+
+rotasAcoes.post('/usuarios/:id/personalidade', (req, res) => {
+  const usuario = repo.findById(req.params.id)
+  if (!usuario) return res.status(404).send('não encontrado')
+
+  const escolhida = String(req.body?.personalidade ?? '')
+
+  // Valida contra a lista canônica ANTES do banco: o CHECK do schema é a última
+  // linha de defesa, não a primeira. Recusar aqui devolve mensagem legível em
+  // vez de erro de constraint.
+  if (!PERSONALIDADES.some((p) => p.valor === escolhida)) {
+    return res.status(400).type('html').send(
+      pagina('Personalidade inválida', `<h1>Personalidade inválida</h1>
+        <p>“${escapar(escolhida)}” não é uma das três opções.</p>
+        <p><a href="/usuarios/${usuario.usuario_id}">voltar</a></p>`),
+    )
+  }
+
+  const anterior = usuario.personalidade
+  if (escolhida === anterior) return voltar(res, usuario.usuario_id)
+
+  repo.setPersonalidade(usuario.usuario_id, escolhida)
+  auditar(
+    req,
+    usuario.usuario_id,
+    `personalidade alterada de "${anterior ?? SEM_INFORMACAO}" para "${escolhida}" via admin`,
   )
   voltar(res, usuario.usuario_id)
 })

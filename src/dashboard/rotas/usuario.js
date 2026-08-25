@@ -3,6 +3,7 @@ import * as repo from '../../db/userRepo.js'
 import { listarInteracoes } from '../../db/interactionLog.js'
 import { pagina, escapar, rotuloGatilho, estadoLegivel } from '../html.js'
 import { SEM_INFORMACAO, TIPOS_GATILHO } from '../../constants.js'
+import { PERSONALIDADES } from '../../llm/prompts.js'
 import { config } from '../../config.js'
 
 export const rotasUsuario = Router()
@@ -46,6 +47,7 @@ export function renderizarDetalhe({ usuario, remedios, gatilhos, interacoes }) {
 </p>
 
 ${blocoConsentimento(usuario)}
+${blocoPersonalidade(usuario)}
 ${blocoAnamnese(usuario)}
 ${blocoRemedios(usuario, remedios)}
 ${blocoGatilhos(usuario, gatilhos)}
@@ -61,6 +63,31 @@ function blocoConsentimento(u) {
 <tr><th>Versão</th><td>${escapar(u.consentimento_versao) || SEM_INFORMACAO}</td></tr>
 <tr><th>Quando</th><td class="num">${escapar(u.consentimento_timestamp) || SEM_INFORMACAO}</td></tr>
 </table>`
+}
+
+/**
+ * Personalidade é ação PRÓPRIA, não campo do formulário genérico de anamnese.
+ *
+ * A coluna tem CHECK próprio no schema e não pertence a CAMPOS_ANAMNESE. Como
+ * texto livre, daria para tentar gravar valor inválido e receber erro de banco
+ * em vez de recusa na tela. Aqui as opções são fechadas.
+ */
+function blocoPersonalidade(u) {
+  const opcoes = PERSONALIDADES.map(
+    (p) =>
+      `<option value="${p.valor}"${u.personalidade === p.valor ? ' selected' : ''}>${
+        p.rotulo
+      } — ${p.resumo}</option>`,
+  ).join('')
+
+  return `<h2>Personalidade</h2>
+<p class="nota">Define o tom de toda mensagem. O estado 10 da anamnese assume
+<code>neutro</code> quando a resposta não é reconhecida — então há um caminho em que
+a pessoa ficou com um tom que não escolheu.</p>
+<form method="post" action="/usuarios/${u.usuario_id}/personalidade">
+  <select name="personalidade">${opcoes}</select>
+  <button type="submit">Salvar</button>
+</form>`
 }
 
 function blocoAnamnese(u) {

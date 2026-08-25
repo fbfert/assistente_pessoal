@@ -801,3 +801,59 @@ describe('CRUD de administradores', () => {
     assert.ok(!corpo.includes('scrypt$'))
   })
 })
+
+
+describe('trocar personalidade do participante', () => {
+  before(async () => {
+    cookie = await autenticar()
+  })
+
+  test('troca aplicada e auditada com origem, destino e autor', async () => {
+    const u = participante('+5511900000050')
+    assert.equal(u.personalidade, 'direto')
+
+    await post(`/usuarios/${u.usuario_id}/personalidade`, { personalidade: 'caloroso' })
+
+    assert.equal(repo.findById(u.usuario_id, db).personalidade, 'caloroso')
+
+    const a = auditorias(u.usuario_id)
+    assert.equal(a.length, 1)
+    assert.match(a[0].texto, /personalidade/)
+    assert.match(a[0].texto, /direto/)
+    assert.match(a[0].texto, /caloroso/)
+    assert.match(a[0].texto, new RegExp(`\\[por ${EMAIL}\\]`))
+  })
+
+  test('valor inválido é recusado ANTES do banco, com mensagem legível', async () => {
+    const u = participante('+5511900000051')
+
+    const r = await post(`/usuarios/${u.usuario_id}/personalidade`, {
+      personalidade: 'sarcastico',
+    })
+
+    assert.equal(r.status, 400)
+    assert.match(await r.text(), /não é uma das três opções/)
+    assert.equal(repo.findById(u.usuario_id, db).personalidade, 'direto', 'valor anterior mantido')
+    assert.equal(auditorias(u.usuario_id).length, 0)
+  })
+
+  test('salvar o mesmo valor não gera auditoria', async () => {
+    const u = participante('+5511900000052')
+
+    await post(`/usuarios/${u.usuario_id}/personalidade`, { personalidade: 'direto' })
+
+    assert.equal(auditorias(u.usuario_id).length, 0, 'nada mudou, nada a auditar')
+  })
+
+  test('as três opções aparecem na tela, como opções fechadas', async () => {
+    const u = participante('+5511900000053')
+    const corpo = await (await get(`/usuarios/${u.usuario_id}`)).text()
+
+    assert.match(corpo, /<select name="personalidade">/)
+    for (const v of ['direto', 'caloroso', 'neutro']) {
+      assert.match(corpo, new RegExp(`<option value="${v}"`))
+    }
+    // Não é campo de texto livre encaixado no form genérico de anamnese.
+    assert.ok(!/name="campo" value="personalidade"/.test(corpo))
+  })
+})
