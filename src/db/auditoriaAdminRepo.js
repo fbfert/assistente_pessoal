@@ -15,6 +15,7 @@ export const ACOES = Object.freeze({
   RESETOU_SENHA: 'resetou_senha',
   TROCOU_PROPRIA_SENHA: 'trocou_propria_senha',
   ENTROU: 'entrou',
+  CONFIGUROU_CREDENCIAL: 'configurou_credencial',
 })
 
 /** A senha gerada NUNCA entra aqui — nem na descrição. */

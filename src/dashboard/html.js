@@ -64,6 +64,7 @@ export function pagina(titulo, corpo, { nav = true, cabeca = '' } = {}) {
     ? `<nav>
          <a href="/">Painel</a>
          <a href="/conexao">Conexão</a>
+         <a href="/credenciais">Credenciais</a>
          <a href="/admins">Administradores</a>
          <a href="/conta">Minha conta</a>
          <span class="espaco"></span>

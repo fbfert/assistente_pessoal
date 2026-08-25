@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { dirname, join } from 'node:path'
 
 /**
  * Configuração única do app. Todo o resto lê daqui — nenhum módulo acessa
@@ -31,6 +32,17 @@ export const config = {
       baseUrl: 'https://api.deepseek.com/chat/completions',
     },
     maxTokens: num(process.env.LLM_MAX_TOKENS, 1024),
+
+    // Credenciais configuráveis pela tela do admin.
+    //
+    // Arquivo, não variável de ambiente: `env_file` é lido UMA vez na subida do
+    // container, então escrever num `.env` de dentro do processo não alcança o
+    // outro container nem sobrevive a um rebuild. Fica ao lado do banco, dentro
+    // do volume que os dois processos compartilham.
+    //
+    // O `.env` continua valendo como fallback — ninguém é obrigado a migrar.
+    chavesPath:
+      process.env.LLM_CHAVES_PATH || join(dirname(process.env.DB_PATH || './data/tars.sqlite'), 'llm-chaves.json'),
   },
 
   transcription: {

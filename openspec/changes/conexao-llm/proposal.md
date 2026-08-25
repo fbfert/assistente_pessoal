@@ -44,7 +44,13 @@ do Docker sem que ninguém tivesse pedido isso.
 - **Código:** `src/llm/chavesRepo.js` (novo), `src/llm/router.js`,
   `src/config.js`, `src/dashboard/rotas/credenciais.js` (novo), `test/`.
 - **Dependências:** nenhuma.
-- **Schema:** nenhum. Isto é arquivo, não banco — de propósito.
+- **Schema:** as credenciais em si não tocam o banco — isso é arquivo, de
+  propósito. Mas a **auditoria** precisa de um valor novo no CHECK de
+  `auditoria_admin.acao`, porque a lista é fechada. É uma mudança pequena e
+  aplicada por **script de migração**, não por recriação do volume: o banco já
+  contém a conta de administrador com a senha que o operador definiu, e recriar
+  faria o bootstrap restaurá-la a partir do `.env`, desfazendo a troca em
+  silêncio.
 - **Infraestrutura:** um arquivo novo em `/data`, dentro do volume `tars_data`.
   **Recriar o volume apaga as credenciais junto com o banco e o pareamento**, e
   elas precisam ser refeitas pela tela.

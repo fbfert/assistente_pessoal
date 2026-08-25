@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS auditoria_admin (
   acao         TEXT    NOT NULL
                        CHECK (acao IN ('criou', 'desativou', 'reativou',
                                        'resetou_senha', 'trocou_propria_senha',
-                                       'entrou')),
+                                       'entrou', 'configurou_credencial')),
   descricao    TEXT    NOT NULL,
   momento      TEXT    NOT NULL DEFAULT (datetime('now'))
 );

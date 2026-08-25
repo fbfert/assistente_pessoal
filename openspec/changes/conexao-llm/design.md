@@ -132,6 +132,29 @@ A tela nunca recebe o valor: o campo de chave é write-only e carrega vazio, mes
 para quem acabou de salvar. Não há caminho de leitura para a interface, e portanto
 não há como um template exibi-lo por engano.
 
+### Auditoria exige um valor novo no CHECK, e uma migração de verdade
+
+`auditoria_admin.acao` tem lista fechada. Registrar troca de credencial exige
+acrescentar um valor a ela.
+
+**Correção a este próprio documento:** a versão inicial afirmava "Schema: nenhum".
+Estava errada — as credenciais não tocam o banco, mas a auditoria delas toca.
+
+E, pela primeira vez neste projeto, **recriar o volume não é o caminho**. Até
+agora foi, porque o banco estava vazio. Hoje ele contém a conta de administrador
+com a senha que o operador definiu; recriar faria o bootstrap restaurá-la a partir
+do `ADMIN_PASSWORD` do `.env`, que ainda é a senha antiga — desfazendo a troca sem
+nenhum aviso.
+
+A migração segue o procedimento que o `AGENTS.md` §6 descreve: dentro de uma
+transação e com `PRAGMA foreign_keys=OFF`, cria-se a tabela nova com a constraint
+atualizada, copiam-se os dados, dropa-se a antiga e renomeia-se. O
+`foreign_keys=OFF` é o que impede o `DROP` de disparar CASCADE sobre as filhas.
+
+O script SHALL ser idempotente: detecta pela definição da tabela se o valor já
+existe e não faz nada nesse caso. `schema.sql` também é atualizado, para que uma
+instalação nova já nasça correta sem depender do script.
+
 ## Risks / Trade-offs
 
 **Backup do volume passa a conter credenciais.** Antes, o volume tinha dado de

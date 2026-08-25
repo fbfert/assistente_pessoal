@@ -1,4 +1,5 @@
 import { config } from '../config.js'
+import { ler } from './chavesRepo.js'
 
 export const PROVIDERS_DISPONIVEIS = Object.freeze(['claude', 'openai', 'deepseek'])
 
@@ -27,10 +28,63 @@ export async function chamarLLM({
   return chamarCompativelOpenAI({ systemPrompt, mensagens, maxTokens, provider })
 }
 
+/**
+ * Resolve chave e modelo em DOIS degraus: credencial configurada pela tela,
+ * depois variável de ambiente.
+ *
+ * Não há terceiro degrau. A configuração comum do projeto tem constante de
+ * fábrica no código; uma credencial não tem — e não deveria.
+ */
+function credenciais(provider) {
+  const doArquivo = ler(provider)
+  const doAmbiente = config.llm[provider]
+
+  const apiKey = doArquivo?.apiKey || doAmbiente.apiKey
+  const model = doArquivo?.model || doAmbiente.model
+
+  if (!apiKey) {
+    // Erro explícito de propósito: falhar em silêncio, ou cair noutro provedor
+    // por conta própria, faria o piloto responder com um modelo que ninguém
+    // escolheu.
+    throw new Error(
+      `Nenhuma credencial para o provedor "${provider}". ` +
+        `Configure em /credenciais no admin, ou defina ${VARIAVEIS[provider]} no ambiente.`,
+    )
+  }
+
+  return { apiKey, model, baseUrl: doAmbiente.baseUrl, version: doAmbiente.version }
+}
+
+const VARIAVEIS = Object.freeze({
+  claude: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  deepseek: 'DEEPSEEK_API_KEY',
+})
+
+/**
+ * Erro de provedor SEM o corpo da resposta.
+ *
+ * Alguns provedores ecoam a credencial recebida no corpo do 401. Incluir o corpo
+ * na exceção colocaria a chave no log do Docker sem ninguém ter pedido.
+ *
+ * O corpo é descartado INTEIRO, não filtrado: filtrar exigiria acertar o formato
+ * de erro de cada provedor a cada mudança de API, e errar uma vez basta para
+ * vazar. Perde-se detalhe de diagnóstico — o código de status distingue os casos
+ * que importam (401 credencial, 429 cota, 5xx provedor fora).
+ */
+function erroDeProvedor(provider, status) {
+  const pista =
+    status === 401 || status === 403
+      ? ' (falha ao autenticar — confira a credencial)'
+      : status === 429
+        ? ' (limite de uso ou cota)'
+        : ''
+  return new Error(`Provedor "${provider}" respondeu ${status}${pista}`)
+}
+
 /** Anthropic Messages API: x-api-key + anthropic-version, system fora do array de mensagens. */
 async function chamarClaude({ systemPrompt, mensagens, maxTokens }) {
-  const { apiKey, model, baseUrl, version } = config.llm.claude
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada')
+  const { apiKey, model, baseUrl, version } = credenciais('claude')
 
   const resposta = await fetch(baseUrl, {
     method: 'POST',
@@ -47,9 +101,7 @@ async function chamarClaude({ systemPrompt, mensagens, maxTokens }) {
     }),
   })
 
-  if (!resposta.ok) {
-    throw new Error(`Anthropic respondeu ${resposta.status}: ${await resposta.text()}`)
-  }
+  if (!resposta.ok) throw erroDeProvedor('claude', resposta.status)
 
   return extrairTextoClaude(await resposta.json())
 }
@@ -59,8 +111,7 @@ async function chamarClaude({ systemPrompt, mensagens, maxTokens }) {
  * Uma implementação só — a diferença entre eles é URL, chave e modelo.
  */
 async function chamarCompativelOpenAI({ systemPrompt, mensagens, maxTokens, provider }) {
-  const { apiKey, model, baseUrl } = config.llm[provider]
-  if (!apiKey) throw new Error(`Chave de API do provedor "${provider}" não configurada`)
+  const { apiKey, model, baseUrl } = credenciais(provider)
 
   const resposta = await fetch(baseUrl, {
     method: 'POST',
@@ -75,9 +126,7 @@ async function chamarCompativelOpenAI({ systemPrompt, mensagens, maxTokens, prov
     }),
   })
 
-  if (!resposta.ok) {
-    throw new Error(`Provedor "${provider}" respondeu ${resposta.status}: ${await resposta.text()}`)
-  }
+  if (!resposta.ok) throw erroDeProvedor(provider, resposta.status)
 
   return extrairTextoOpenAI(await resposta.json())
 }
