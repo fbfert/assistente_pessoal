@@ -17,6 +17,12 @@
 - LLM multi-provider (Claude / OpenAI / DeepSeek), trocável por variável de ambiente.
 - Empresa: **Xiax**.
 
+**Dois processos, um volume.** `tars` (bot: WhatsApp + scheduler) e `dashboard`
+(backend administrativo) são containers separados que compartilham **apenas** o
+volume do SQLite. Não há memória, socket nem evento em comum — qualquer coisa que
+um precise contar ao outro passa por uma tabela. É o que motiva `estado_conexao`
+(o QR de pareamento) e a validação de cache por `MAX(atualizado_em)`.
+
 **Regra 1b (crítica, dado de saúde):** o sistema **NUNCA** inventa ou estima dado de saúde
 (nome de remédio, dose, horário). Campo sem informação = a string literal `sem informação`
 (com acento e cedilha, byte a byte), nunca um chute. Existe pesquisa real (Stone et al. 2002,
@@ -102,16 +108,105 @@ artefato a qualquer momento), mas implementar sem proposta aprovada não é flui
   não o remova.
 - **Onboarding é proativo**, não reativo: quem manda a primeira mensagem é o bot
   (`convidarPiloto`). O branch reativo do handler é só rede de segurança.
-- **Segurança de rede:** o dashboard roda **somente** em `127.0.0.1` (bind `127.0.0.1:3300`),
-  nunca em interface pública. Acesso é via túnel SSH. Isso é decisão de segurança, não detalhe.
+- **Segurança de rede:** o processo do admin nunca é alcançável direto da internet.
+  No Compose ele escuta `0.0.0.0` *dentro do container* e quem restringe é o bind
+  `127.0.0.1:3300` da publicação de porta; rodando direto no host, escuta
+  `127.0.0.1`. Confira sempre pela porta observada no host (`ss -ltn | grep 3300`),
+  nunca pelo que o processo loga.
+  O acesso externo passa por um proxy reverso do Apache em `tdah.xiax.com.br`
+  (`public_html/.htaccess`, **fora do Git**) ou por túnel SSH. Quem autentica é a
+  aplicação, não o proxy.
 - **Segredos nunca entram no Git.** `.env` é gitignored; `.env.example` documenta as variáveis
   sem valores.
-- **Testes:** `node --test test/`. Rode antes de considerar qualquer etapa concluída e reporte
+- **Testes:** `npm test` (`node --test test/*.test.js` — o diretório sozinho não
+  funciona no Node 22). Rode antes de considerar qualquer etapa concluída e reporte
   o resultado real — teste que falha se reporta como falha, com a saída.
+- **Suíte verde não prova que sobe.** Dois bugs deste projeto passaram por 105
+  testes verdes e só apareceram no `docker compose up`: o import errado do Baileys
+  e o dashboard bindando `127.0.0.1` dentro do container. `test/smoke.test.js`
+  existe por causa disso — ele carrega cada entrypoint e confere a API que promete.
+  **Verifique rodando**, não só testando.
+- **Todo texto vindo do participante é escapado** antes de ir para o HTML. O admin
+  exibe nome, respostas de anamnese e conversas inteiras.
+- **Ordem de leitura de configuração:** banco, depois ambiente (para as chaves que
+  têm uma), depois a constante do código. Nem toda chave tem variável de ambiente —
+  os horários padrão de gatilho nunca tiveram.
 
 ---
 
-## 5. Este repositório vive no home da conta de hospedagem
+## 5. O backend administrativo
+
+`src/dashboard/` deixou de ser somente leitura: é a superfície de operação do
+piloto. Mesmo processo, mesma porta, mesmo bind em loopback — decomposto em
+módulos.
+
+```
+src/dashboard/
+  server.js          entrypoint: monta o app, bootstrap da conta, listen
+  auth.js            sessão, cookie assinado, middleware, limite de tentativas
+  senha.js           hash scrypt (sem dependência nativa nova)
+  html.js            layout, escaping, navegação
+  queries.js         agregações de leitura do painel
+  rotas/
+    login.js         login por e-mail e senha, logout
+    painel.js        listagem, esteira, formulário de convite
+    usuario.js       /usuarios/:id — leitura completa do participante
+    acoes.js         escritas sobre participante + telas de confirmação
+    admins.js        contas da equipe
+    conta.js         trocar a própria senha
+    conexao.js       estado do WhatsApp e QR como imagem
+```
+
+### Invariantes que não se negociam
+
+- **Autenticação é por conta, nunca por senha compartilhada.** `ADMIN_PASSWORD` é
+  semente de bootstrap, não credencial de login. Reintroduzir login por senha única
+  faria a auditoria parar de saber quem agiu.
+- **Comparação de senha em tempo constante**, e trabalho descartável quando o
+  e-mail não existe — senão o tempo de resposta enumera contas.
+- **Toda escrita é auditada**, e a auditoria nomeia o autor.
+- **Confirmação em duas etapas para ação destrutiva.** O projeto não tem JavaScript
+  de cliente; a página intermediária em GET faz o papel do `confirm()`. Ela descreve
+  o efeito e não altera nada.
+- **Guardas de servidor, não de interface.** Esconder o botão nunca basta: não se
+  desativa a própria conta nem a última conta ativa, e não se convida quem já tem
+  progresso de anamnese.
+- **O formulário de login é publicamente alcançável** desde que o Basic Auth do
+  Apache saiu. A proteção é atraso a cada falha (não contornável) mais bloqueio por
+  origem (defesa em profundidade, forjável no cabeçalho de proxy). Nenhuma das duas
+  substitui senha forte.
+
+### Onde vai cada auditoria
+
+| Ação | Destino | Por quê |
+|---|---|---|
+| Sobre um participante | `historico_interacoes`, `tipo='acao_admin'` | Fica na linha do tempo da pessoa, junto das conversas |
+| Sobre a equipe (criar, desativar, resetar, entrar) | `auditoria_admin` | Não tem participante associado; `usuario_id` lá é `NOT NULL` |
+
+Não unifique as duas. Tornar `usuario_id` anulável enfraqueceria a chave
+estrangeira e quebraria a premissa de toda consulta existente, que assume a linha
+do tempo de uma pessoa; inventar um participante-sistema poria dado falso na
+contagem do painel.
+
+## 6. Mudança de schema depois do pareamento
+
+O schema usa `CREATE TABLE IF NOT EXISTS`: **um banco já existente não ganha
+coluna nem tabela nova sozinho.** Até aqui, toda mudança de schema foi resolvida
+recriando o volume, porque o banco estava vazio.
+
+**Isso deixa de ser possível assim que o WhatsApp for pareado.** `/data/auth` vive
+no mesmo volume: apagá-lo derruba a sessão, e reparear exige o chip em mãos.
+
+A partir daí, mudança de schema pede script de migração. Em SQLite, alterar um
+CHECK constraint não se faz com `ALTER TABLE`: dentro de uma transação e com
+`PRAGMA foreign_keys=OFF`, cria-se a tabela nova com a constraint atualizada,
+copiam-se os dados, dropa-se a antiga e renomeia-se. O `foreign_keys=OFF` é
+essencial — sem ele, o `DROP` da tabela antiga dispara o CASCADE sobre as filhas.
+
+**Antes de qualquer recriação, conte as linhas.** Não confie em verificação de
+sessão anterior: ela tem data.
+
+## 7. Este repositório vive no home da conta de hospedagem
 
 A raiz do projeto é `/home/tdah`, que também é o home da conta (Virtualmin): `Maildir/`,
 `public_html/`, `logs/`, `etc/`, `cgi-bin/`, `virtualmin-backup/`. Isso foi decisão explícita
@@ -123,7 +218,7 @@ Nunca rode `git add -A` sem olhar o que entrou.
 
 ---
 
-## 6. Kits Xiax instalados (`.cursor/`) — escopo de cada um
+## 8. Kits Xiax instalados (`.cursor/`) — escopo de cada um
 
 Três kits foram copiados de `/home/tdah/md`. Eles foram escritos para o **Xiax Dashboard**
 (Express + Prisma + MariaDB + Next.js) e para a **agência de landing pages** da Xiax — que são
@@ -150,13 +245,17 @@ Esperado que `ai-check.mjs` acuse divergência nelas — é intencional.
 
 ---
 
-## 7. Checklist antes de dizer "pronto"
+## 9. Checklist antes de dizer "pronto"
 
 - [ ] Li as specs aplicáveis e as listei no resumo final.
 - [ ] Nenhuma alteração contraria uma spec aprovada.
 - [ ] Conflitos e ambiguidades foram apontados, não resolvidos por conta própria.
 - [ ] Spec criada/atualizada para toda funcionalidade nova.
 - [ ] `openspec validate --all --no-interactive` executado — e passou.
-- [ ] `node --test test/` executado — e o resultado real está no resumo.
+- [ ] `npm test` executado — e o resultado real está no resumo.
+- [ ] Subiu de verdade: `docker compose up -d --build` e o caminho afetado
+      exercitado pelo domínio ou pelo loopback. Suíte verde não prova que sobe.
+- [ ] Mudou schema? Contou as linhas antes de recriar, e conferiu se o WhatsApp
+      já está pareado (ver §6).
 - [ ] `git status` conferido: nada de `Maildir/`, `public_html/`, `logs/`, `.env`, `data/`, `auth/`.
 - [ ] Resumo final lista specs lidas + comandos de validação executados.

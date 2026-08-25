@@ -73,33 +73,57 @@ até a anamnese concluir e os gatilhos ligarem.
 Repita para cada um dos 5. Convidar o mesmo número duas vezes é seguro: reaproveita
 o usuário em vez de duplicar.
 
-## Dashboard
+> **O formulário de convite do admin não substitui este comando ainda.** Ele cria
+> o participante e registra a intenção, mas quem tem a sessão do WhatsApp é o
+> processo do bot, noutro container — a entrega da mensagem continua saindo por
+> aqui. Fechar isso usaria o mesmo mecanismo de tabela compartilhada que já
+> resolve o QR, e é escopo ainda não construído.
 
-O dashboard é alcançável **somente pelo loopback do host**. Ele mostra dado de saúde de
-pessoas identificadas — por isso nunca é exposto na porta pública, mesmo tendo senha
-(ver [Backend administrativo](#backend-administrativo)).
+## Como acessar o admin
 
-No Compose, o processo escuta em `0.0.0.0` *dentro do container* (lá o `127.0.0.1` seria o
-loopback do próprio container, que o mapeamento de porta não alcança) e quem restringe é o
-bind `127.0.0.1:3300:3300`. Rodando direto no host, ele escuta em `127.0.0.1` — controlado por
-`DASHBOARD_HOST`. Para conferir que está certo, olhe a porta no host, não a do processo:
+Dois caminhos. Nos dois, quem autentica é a **aplicação** — e-mail e senha no
+formulário da página.
 
-```bash
-ss -ltn | grep 3300      # precisa aparecer 127.0.0.1:3300, nunca 0.0.0.0:3300
-```
+**Pelo domínio** (é como se usa no dia a dia):
 
-O acesso é por túnel SSH:
+<https://tdah.xiax.com.br>
+
+Um proxy reverso do Apache atende o domínio e repassa para o processo. Ele **não**
+autentica: `public_html/.htaccess` só faz o proxy, força HTTPS e mantém a página
+fora de buscadores. Esse arquivo vive fora do Git — é configuração deste servidor,
+não se replica num clone.
+
+**Por túnel SSH** (não depende do Apache):
 
 ```bash
 ssh -L 3300:localhost:3300 usuario@<meu-ip>
 ```
 
-Depois abra <http://localhost:3300> no seu navegador.
+E abra <http://localhost:3300>.
 
-Ele mostra, por pessoa: onde parou na anamnese, taxa de resposta do check-in,
-despejos espontâneos da semana, silêncios consecutivos por tipo de gatilho e
-correções reportadas. Quem cruzou o limiar de silêncio aparece destacado em
-vermelho — é o sinal de que alguém está sumindo.
+### O processo nunca fica exposto direto
+
+No Compose ele escuta `0.0.0.0` *dentro do container* — lá o `127.0.0.1` seria o
+loopback do próprio container, que o mapeamento de porta não alcança — e quem
+restringe é o bind `127.0.0.1:3300:3300`. Rodando direto no host, escuta
+`127.0.0.1`, controlado por `DASHBOARD_HOST`.
+
+Confira pela porta observada no host, **nunca** pelo que o processo loga:
+
+```bash
+ss -ltn | grep 3300      # precisa aparecer 127.0.0.1:3300, nunca 0.0.0.0:3300
+```
+
+### O painel
+
+Mostra, por pessoa: onde parou na anamnese, taxa de resposta do check-in, despejos
+espontâneos da semana, silêncios consecutivos por tipo de gatilho e correções
+reportadas. Quem cruzou o limiar de silêncio aparece destacado em vermelho — é o
+sinal de que alguém está sumindo.
+
+Abaixo, a **esteira**: a lista nominal de quem está pendente de consentimento, de
+quem consentiu sem concluir e de quem concluiu. A contagem diz que existe um
+problema; a lista diz em quem cutucar.
 
 
 ## Backend administrativo
@@ -160,15 +184,24 @@ mais aceita no login** — entrar passa a ser pela senha da conta.
 Se o banco for recriado, o bootstrap roda de novo e a conta volta com a senha do
 `.env`. Se você já tinha trocado a senha em `/conta`, ela se perde nesse caso.
 
-### Duas camadas de proteção
+### O que protege o admin
 
-1. **Bind em loopback** — o processo nunca é alcançável da rede pública.
-2. **Conta de administrador** — e-mail e senha, com hash `scrypt` e sal por conta.
+O admin exibe o histórico completo das conversas e permite **escrita** sobre dado
+de saúde de pessoas identificadas. O que fica entre isso e a internet:
 
-A conta existe porque o admin exibe o histórico completo das conversas e permite
-**escrita** sobre dado de saúde. O bind protege contra a rede; a conta protege
-contra quem já está do lado de dentro do túnel — e diz **quem** fez cada
-alteração, o que uma senha compartilhada não faz.
+| Camada | O que faz | Limite |
+|---|---|---|
+| Bind em loopback | O processo nunca é alcançável direto da rede | O Apache alcança, e é ele que atende o domínio |
+| Conta de administrador | E-mail e senha, hash `scrypt` com sal por conta | Só é tão forte quanto a senha escolhida |
+| Atraso a cada falha de login | Derruba a taxa de tentativa em ordens de grandeza | Não bloqueia, só freia |
+| Bloqueio por origem | 5 falhas em 15 minutos travam aquela origem | Depende do IP do cabeçalho de proxy, que é forjável |
+| HTTPS obrigatório | A senha nunca trafega em claro | — |
+
+A conta também responde **quem** fez cada alteração — o que uma senha
+compartilhada não faz, e é metade do valor da auditoria.
+
+**Sendo direto sobre o limite:** as duas últimas linhas são defesa em
+profundidade, não garantia. O que protege de verdade é a senha ser forte.
 
 ### O que dá para fazer
 
@@ -184,10 +217,28 @@ alteração, o que uma senha compartilhada não faz.
 | **Pausar** | Suspende todos os disparos sem apagar nem desativar nada. Despausar restaura o estado exato |
 | **Reiniciar anamnese** | Ação destrutiva, com confirmação: limpa campos, remédios e gatilhos |
 | **Anonimizar** | Saída do piloto. Ver abaixo |
+| **Personalidade** | Trocar entre `direto`, `caloroso` e `neutro`. Importa porque o estado 10 da anamnese assume `neutro` quando a resposta não é reconhecida — há um caminho em que a pessoa ficou com um tom que não escolheu |
 | **Conexão** | Status do WhatsApp e QR de pareamento como imagem, sem `docker compose logs` |
 
-Toda ação de escrita grava uma linha `acao_admin` em `historico_interacoes` —
-mesmo log append-only de qualquer outra interação, sem tabela paralela.
+Toda ação de escrita sobre um participante grava uma linha `acao_admin` em
+`historico_interacoes`, com o autor identificado — mesmo log append-only de
+qualquer outra interação daquela pessoa.
+
+Ações sobre **contas da equipe** vão para `auditoria_admin`, um log separado. A
+divisão é semântica: quem abre a página de um participante quer o que aconteceu
+com **ele**, não que alguém trocou de senha. Tecnicamente também não caberia —
+`historico_interacoes.usuario_id` é obrigatório e referencia um participante.
+
+### Mapa das telas
+
+| Rota | O que é |
+|---|---|
+| `/` | Painel: totais, tabela de participantes, esteira, convite |
+| `/usuarios/:id` | Detalhe: anamnese, personalidade, remédios, gatilhos, silêncios, histórico completo |
+| `/admins` | Contas da equipe e auditoria da equipe |
+| `/conta` | Trocar a própria senha |
+| `/conexao` | Estado do WhatsApp e QR |
+| `/login` | Entrada |
 
 ### Saída do piloto: anonimizar, não excluir
 
