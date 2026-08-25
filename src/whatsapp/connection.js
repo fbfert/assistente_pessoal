@@ -1,10 +1,11 @@
-import baileys from '@whiskeysockets/baileys'
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason,
+  downloadMediaMessage,
+} from '@whiskeysockets/baileys'
 import qrcode from 'qrcode-terminal'
 import pino from 'pino'
 import { config } from '../config.js'
-
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, downloadMediaMessage } =
-  baileys
 
 const logger = pino({ level: 'warn' })
 

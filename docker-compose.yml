@@ -24,6 +24,9 @@ services:
     environment:
       DB_PATH: /data/tars.sqlite
       WHATSAPP_AUTH_DIR: /data/auth
+      # Escuta em todas as interfaces DO CONTAINER. Isso não expõe nada: quem
+      # restringe ao loopback do host é o bind "127.0.0.1:3300:3300" abaixo.
+      DASHBOARD_HOST: 0.0.0.0
     volumes:
       - tars_data:/data
     command: node src/dashboard/server.js

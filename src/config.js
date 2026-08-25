@@ -55,7 +55,14 @@ export const config = {
     port: num(process.env.DASHBOARD_PORT, 3300),
     // Decisão de segurança, não detalhe: o dashboard mostra dado de saúde de
     // pessoas identificadas e não tem autenticação. Acesso é por túnel SSH.
-    host: '127.0.0.1',
+    //
+    // O padrão 127.0.0.1 vale para execução direta no host. DENTRO de um
+    // container, 127.0.0.1 é o loopback DO CONTAINER — o mapeamento de porta
+    // do Docker não consegue alcançá-lo, e o dashboard fica inacessível. Lá o
+    // processo escuta 0.0.0.0 e quem garante o loopback é o bind do Compose
+    // ("127.0.0.1:3300:3300"). A garantia de segurança é a mesma; muda só onde
+    // ela é aplicada.
+    host: process.env.DASHBOARD_HOST || '127.0.0.1',
   },
 
   // Os dois números "no chute" do piloto. Existem como env justamente porque
