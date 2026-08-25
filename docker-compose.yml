@@ -1,0 +1,41 @@
+services:
+  tars:
+    build: .
+    image: tars-piloto:latest
+    container_name: tars
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/tars.sqlite
+      WHATSAPP_AUTH_DIR: /data/auth
+    volumes:
+      - tars_data:/data
+    # Terminal interativo para o QR de pareamento ficar legível em:
+    #   docker compose logs -f tars
+    stdin_open: true
+    tty: true
+
+  dashboard:
+    build: .
+    image: tars-piloto:latest
+    container_name: tars-dashboard
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/tars.sqlite
+      WHATSAPP_AUTH_DIR: /data/auth
+    volumes:
+      - tars_data:/data
+    command: node src/dashboard/server.js
+    ports:
+      # DECISÃO DE SEGURANÇA, não detalhe de configuração: o dashboard mostra
+      # dado de saúde de pessoas identificadas e NÃO tem autenticação.
+      # O bind em 127.0.0.1 é o que impede exposição pública. Acesso remoto:
+      #   ssh -L 3300:localhost:3300 usuario@<ip-do-servidor>
+      # NUNCA troque por "3300:3300".
+      - "127.0.0.1:3300:3300"
+    depends_on:
+      - tars
+
+volumes:
+  tars_data:

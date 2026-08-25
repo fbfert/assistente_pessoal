@@ -1,0 +1,26 @@
+# --- App ---
+node_modules/
+.env
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+auth/
+
+# --- Este repositorio tem raiz no home da conta de hospedagem (Virtualmin).
+# Nada abaixo pode entrar no controle de versao. Ver AGENTS.md secao 5.
+Maildir/
+public_html/
+logs/
+etc/
+cgi-bin/
+homes/
+tmp/
+virtualmin-backup/
+md/
+.bash_logout
+.bash_profile
+.bashrc
+
+# --- Kits Xiax: verificadores locais, nao sao codigo do TARS ---
+.xiax-kits/

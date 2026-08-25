@@ -1,0 +1,138 @@
+---
+description: Constituição do painel: Rotas Robustas, multi-tenancy por companyId, migrations com migrate deploy e as armadilhas que este repo já pagou.
+globs:
+alwaysApply: true
+---
+
+# Xiax Dashboard - Architecture Rules
+
+**Official Pattern:** Rotas Robustas (self-contained routes with inline Prisma, validation, notifications).
+
+## 0. Project Skills
+Always check `.claude/skills/` for templates before creating:
+- `create-backend-module/` — new route-based modules
+- `create-ui-component/` — new UI components
+- `deploy-sync/` — VPS deployment protocol
+
+## 0.1 Before writing code
+- **New feature or refactor: write `.specs/<task>/spec.md` FIRST** and get it approved.
+  No spec, no code — this holds even under time pressure. Bug fixes, typos, docs and
+  formatting are exempt. Template: `.specs/_TEMPLATE.md`.
+- **`./scripts/validate.sh` is the gate.** Running `tsc` and `eslint` by hand does not
+  replace it. Do not run it while a dev server is up — they fight over `.next` and the
+  page comes back with no CSS.
+- Commit locally. **Pushing is the team's call**, not the agent's.
+
+## 0.2 Traps this repo already paid for
+- **A green validate.sh does not prove the screen works.** The two most expensive
+  defects here passed typecheck, build and the whole suite: helmet's
+  `Cross-Origin-Resource-Policy` hiding every image embedded in an e-mail body, and
+  Outlook's inline `max-width` beating the iframe stylesheet. The browser was the one
+  blocking. Touching e-mail rendering or the contacts screen? Open a real browser.
+- **A transaction that writes to a parent row and inserts into a child has a mandatory
+  order.** The child `INSERT` takes a SHARED lock on the parent row to validate the FK;
+  two concurrent transactions get it together and then deadlock trying to promote it.
+  Take the exclusive lock FIRST (the `UPDATE` the transaction was going to do anyway).
+  Found in chat message send, where two simultaneous sends returned 500.
+- **Prisma's `update` runs a SELECT before the UPDATE; `updateMany` does not.** Under
+  concurrency MariaDB returns error 1020 ("record has changed since last read") between
+  the two. For counters and fields you do not need back, use `updateMany`.
+- **`emails-worker` is not only about e-mail.** It also sweeps contact suggestions,
+  processes spreadsheet imports and runs the chat attachment GC. Legacy name.
+
+## 1. Tech Stack (Express + Prisma + MariaDB)
+- **Backend:** Express 4, Prisma 5, **MariaDB 11** (dev via `docker-compose.dev.yml`; MariaDB on the VPS too — never assume MySQL 8 behaviour).
+- **Frontend:** **Next.js 15** (App Router), Tailwind CSS, Framer Motion.
+  GSAP exists but only in the landing motion engine (`lib/motion/load-libs.ts`, loaded on demand). For panel UI, use Framer Motion.
+- **Validation:** Zod (schemas live in routes, not separate files).
+- **Icons:** Lucide React. **Aesthetics:** Dark, glassmorphism, smooth animations.
+
+## 2. Backend Module Structure (Hybrid Service Rule)
+**Default:** Single `*.routes.ts` (Rota Robusta pattern).
+
+**Extract to `.service.ts` ONLY if:**
+- File exceeds **150 lines**, OR
+- Logic is **non-CRUD** (external API calls, heavy calculations, multi-table orchestration)
+
+**Structure:**
+```
+backend/src/modules/<name>/
+  └── <name>.routes.ts  (Zod + Prisma + notify + logActivity + asyncHandler)
+```
+
+**DO NOT create `*.schema.ts` files** — Zod schemas go inline in routes.
+
+## 3. Route Handler Pattern (Mandatory)
+Every handler must follow this structure:
+```typescript
+asyncHandler(async (req, res) => {
+  const { companyId, id: userId } = req.user!
+  const data = schema.parse(req.body)
+
+  // 1. Ownership check (findFirst with companyId)
+  const existing = await prisma.model.findFirst({
+    where: { id: params.id, companyId }
+  })
+  if (!existing) throw AppError.notFound('...')
+
+  // 2. Prisma operation
+  const result = await prisma.model.create({ data: { ...data, companyId } })
+
+  // 3. Side effects
+  await notify({ companyId, actorId: userId, kind: '...', title: '...' })
+  await logActivity({ companyId, actorId: userId, action: 'model.created', entityId: result.id })
+
+  // 4. Response
+  res.status(201).json(result)
+})
+```
+
+**Rules:**
+- ALWAYS `router.use(authenticate)` at module top.
+- ALWAYS filter by `companyId` in every query.
+- ALWAYS wrap in `asyncHandler()`.
+- ALWAYS parse + validate with Zod **before** Prisma.
+- Use `AppError` (not raw `throw Error`).
+
+## 4. Frontend Components
+- `components/ui/`: Atomic, reusable (Button, Input, Modal, etc.).
+- `components/features/` or `components/<feature>/`: Feature-scoped.
+- **No ad-hoc styles in pages.** Compose from UI components.
+- Animations: `framer-motion` (whileHover, whileTap).
+
+## 5. Error Handling & Validation
+- Backend: `AppError` class (`src/utils/AppError.ts`).
+- All validation: Zod schemas (inline in routes).
+- HTTP codes: 400 (validation), 403 (forbidden), 404 (notFound), 500 (server error).
+
+## 6. Data Layer (Prisma Multi-Tenancy)
+- Every model: `companyId` field (except system: Company, User, RefreshToken).
+- Every query: filter by `companyId` to prevent data leakage.
+- Long strings: use `@db.Text` (not `String` with default 255 limit).
+- Multi-write: use `prisma.$transaction()`.
+- Migrations: **`npx prisma migrate deploy`**, always — locally and on the VPS.
+  **NEVER `db push`** (drops columns to match the schema, with no migration and no
+  warning) and **NEVER `migrate dev`** (offers a reset that wipes the database).
+  To author a migration, hand-write the SQL under `prisma/migrations/<timestamp>_<name>/`
+  and check it against `prisma migrate diff` — that diff carries pre-existing JSON
+  drift on six tables which must NOT be pasted into a new migration.
+- Rehearse any schema change against a copy of production first. Past migrations
+  caught a `DROP INDEX` MySQL would refuse (the index was holding up an FK) and an
+  `UPDATE` that would have flattened manual configuration.
+
+## 7. Activity & Notifications
+- After mutations: `logActivity({ companyId, actorId, action: 'entity.verb', entityId, metadata })`
+- After user-relevant changes: `notify({ companyId, actorId, kind, title, body, link, targetUserId? })`
+- Both functions in `src/lib/`.
+
+## 8. Naming & Style
+- **Variables/functions:** camelCase
+- **Components:** PascalCase
+- **Files:** kebab-case or PascalCase (components)
+- **Constants:** UPPER_SNAKE_CASE
+- Keep self-documenting code; avoid comments unless "why" is non-obvious.
+
+## 9. Documentation
+- Update `README.md` + `DESIGN_SYSTEM.md` after major features.
+- JSDoc only for public, reusable library functions.
+- Specs go in `.specs/` folder (see `.specs/_TEMPLATE.md`).

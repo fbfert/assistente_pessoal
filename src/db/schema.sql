@@ -1,0 +1,98 @@
+-- =============================================================================
+-- TARS piloto — esquema SQLite
+--
+-- Os nomes de coluna aqui são CONTRATO entre módulos. Renomear coluna é
+-- mudança de spec (openspec/specs/armazenamento), não refatoração.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS usuarios (
+  usuario_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero_whatsapp         TEXT    NOT NULL UNIQUE,
+
+  -- Consentimento: dado de saúde sensível, LGPD se aplica.
+  consentimento_aceito    INTEGER NOT NULL DEFAULT 0,
+  consentimento_versao    TEXT,
+  consentimento_timestamp TEXT,
+
+  personalidade           TEXT    CHECK (personalidade IN ('direto', 'caloroso', 'neutro')),
+
+  anamnese_estado         INTEGER NOT NULL DEFAULT 0
+                                  CHECK (anamnese_estado BETWEEN 0 AND 12),
+
+  -- Controle da anamnese.
+  -- `anamnese_exemplo_pedido` é o flag de UMA tentativa extra no estado corrente:
+  -- serve tanto para o pedido de exemplo concreto (resposta vaga) quanto para a
+  -- repergunta de personalidade no estado 10. É zerado a cada transição de estado.
+  anamnese_ultima_mensagem_em TEXT,
+  anamnese_lembrete_enviado   INTEGER NOT NULL DEFAULT 0,
+  anamnese_exemplo_pedido     INTEGER NOT NULL DEFAULT 0,
+
+  -- Um campo por resposta da anamnese.
+  -- rotina_boa e rotina_ruim existem separados de propósito: no MVP o estado 3
+  -- pede as duas coisas numa mensagem só e tudo cai em rotina_boa. A coluna
+  -- rotina_ruim já existe para que separar depois não exija migração.
+  nome                    TEXT,
+  o_que_trava             TEXT,
+  rotina_boa              TEXT,
+  rotina_ruim             TEXT,
+  gatilhos_de_sobrecarga  TEXT,
+  sinal_de_alerta         TEXT,
+  pessoas_chave           TEXT,
+  vocabulario_proprio     TEXT,
+  nunca_fazer             TEXT,
+
+  criado_em               TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS remedios (
+  remedio_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id  INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+  -- Regra 1b: nome ou horário não informado é gravado como 'sem informação'
+  -- (constante SEM_INFORMACAO), NUNCA como um chute.
+  nome        TEXT    NOT NULL,
+  horario     TEXT    NOT NULL,
+  criado_em   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS gatilhos_configurados (
+  gatilho_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id  INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+  tipo        TEXT    NOT NULL
+                      CHECK (tipo IN ('checkin_manha', 'remedio', 'checklist_fim_dia')),
+  horario     TEXT    NOT NULL,
+  ativo       INTEGER NOT NULL DEFAULT 1,
+  -- Só preenchido quando tipo = 'remedio'.
+  remedio_id  INTEGER REFERENCES remedios(remedio_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS contadores (
+  usuario_id           INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+  gatilho_tipo         TEXT    NOT NULL
+                               CHECK (gatilho_tipo IN ('checkin_manha', 'remedio', 'checklist_fim_dia')),
+  silencio_consecutivo INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (usuario_id, gatilho_tipo)
+);
+
+CREATE TABLE IF NOT EXISTS despejos_semana (
+  usuario_id    INTEGER PRIMARY KEY REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+  -- Data (YYYY-MM-DD) da segunda-feira que abre a semana corrente.
+  semana_inicio TEXT    NOT NULL,
+  contagem      INTEGER NOT NULL DEFAULT 0
+);
+
+-- Log append-only. Nada aqui é atualizado nem apagado.
+CREATE TABLE IF NOT EXISTS historico_interacoes (
+  interacao_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id          INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+  tipo                TEXT    NOT NULL
+                              CHECK (tipo IN ('gatilho_disparado', 'resposta_gatilho',
+                                              'despejo_espontaneo', 'silencio',
+                                              'correcao_reportada', 'anamnese')),
+  timestamp           TEXT    NOT NULL,
+  texto               TEXT,
+  -- Tipo do gatilho a que esta linha se refere (disparo, resposta ou silêncio).
+  gatilho_relacionado TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_historico_usuario_timestamp
+  ON historico_interacoes (usuario_id, timestamp);

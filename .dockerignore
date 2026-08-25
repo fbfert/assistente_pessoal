@@ -1,0 +1,31 @@
+# Contexto de build: este repositorio tem raiz no home da conta de hospedagem.
+# Sem este arquivo o daemon do Docker recebe Maildir, logs e o site publico.
+Maildir/
+public_html/
+logs/
+etc/
+cgi-bin/
+homes/
+tmp/
+virtualmin-backup/
+md/
+.xiax-kits/
+
+# Nao entram na imagem
+node_modules/
+.env
+data/
+auth/
+*.sqlite*
+test/
+openspec/
+.git/
+.claude/
+.cursor/
+.agents/
+.github/
+Dockerfile
+docker-compose.yml
+README.md
+AGENTS.md
+CLAUDE.md
