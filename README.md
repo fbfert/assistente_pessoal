@@ -75,8 +75,18 @@ o usuário em vez de duplicar.
 
 ## Dashboard
 
-O dashboard escuta **somente em `127.0.0.1`**. Ele mostra dado de saúde de pessoas
-identificadas e não tem autenticação — por isso nunca é exposto na porta pública.
+O dashboard é alcançável **somente pelo loopback do host**. Ele mostra dado de saúde de
+pessoas identificadas e não tem autenticação — por isso nunca é exposto na porta pública.
+
+No Compose, o processo escuta em `0.0.0.0` *dentro do container* (lá o `127.0.0.1` seria o
+loopback do próprio container, que o mapeamento de porta não alcança) e quem restringe é o
+bind `127.0.0.1:3300:3300`. Rodando direto no host, ele escuta em `127.0.0.1` — controlado por
+`DASHBOARD_HOST`. Para conferir que está certo, olhe a porta no host, não a do processo:
+
+```bash
+ss -ltn | grep 3300      # precisa aparecer 127.0.0.1:3300, nunca 0.0.0.0:3300
+```
+
 O acesso é por túnel SSH:
 
 ```bash
