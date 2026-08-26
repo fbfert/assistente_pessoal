@@ -68,11 +68,11 @@
 
 ## 6. Página pública
 
-- [ ] 6.1 `src/web/publico/` : uma página com tela de entrada e tela de conversa
-- [ ] 6.2 JavaScript só com `fetch` e desenho da resposta — sem framework, sem build,
+- [x] 6.1 `src/web/publico/` : uma página com tela de entrada e tela de conversa
+- [x] 6.2 JavaScript só com `fetch` e desenho da resposta — sem framework, sem build,
       sem recurso externo
-- [ ] 6.3 Texto inserido como texto (`textContent`), nunca como HTML
-- [ ] 6.4 Nenhuma regra de negócio no cliente: a página não sabe o que é anamnese
+- [x] 6.3 Texto inserido como texto (`textContent`), nunca como HTML
+- [x] 6.4 Nenhuma regra de negócio no cliente: a página não sabe o que é anamnese
 
 ## 7. Admin
 
@@ -103,7 +103,7 @@
 - [x] 8.14 Migração: banco antigo ganha as colunas com os dados preservados, e roda
       duas vezes sem efeito na segunda
 - [x] 8.15 Anonimização redige `data_nascimento` e apaga as sessões
-- [ ] 8.16 Texto do participante que se parece com HTML aparece como texto
+- [x] 8.16 Texto do participante que se parece com HTML aparece como texto
 
 ## 9. Fechamento
 

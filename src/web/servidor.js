@@ -1,5 +1,7 @@
 import express from 'express'
 import { timingSafeEqual } from 'node:crypto'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { config } from '../config.js'
 import { CANAIS, TIPOS_INTERACAO } from '../constants.js'
 import * as repo from '../db/userRepo.js'
@@ -25,6 +27,8 @@ import { bloqueado, registrarFalha, limpar } from './tentativas.js'
  * administrativa. Não há caminho de criação de usuário: quem não foi convidado
  * não entra, e ponto.
  */
+
+const PUBLICO = join(dirname(fileURLToPath(import.meta.url)), 'publico')
 
 /** Resposta ÚNICA de falha de entrada. Ver `mesmaFalha`, abaixo. */
 const FALHA_ENTRADA = { erro: 'Telefone ou data de nascimento não conferem.' }
@@ -66,6 +70,30 @@ export function criarAppWeb(db) {
   app.set('trust proxy', true)
   app.disable('x-powered-by')
   app.use(express.json({ limit: '32kb' }))
+
+  /**
+   * Cabeçalhos da página pública.
+   *
+   * A CSP com `'self'` em tudo é o que dá dente à regra de "nenhum recurso de
+   * origem externa": não é convenção que o próximo agente possa quebrar sem
+   * perceber — o navegador recusa. É também por isso que o script e o estilo
+   * estão em arquivos, e não embutidos: `'unsafe-inline'` abriria justamente o
+   * buraco que a política existe para fechar.
+   */
+  app.use((_req, res, next) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; " +
+        "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    )
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Referrer-Policy', 'no-referrer')
+    next()
+  })
+
+  // A página. Estática, servida pelo mesmo processo — sem depender do dashboard
+  // nem da autenticação de admin.
+  app.use(express.static(PUBLICO, { index: 'index.html', extensions: false }))
 
   // --- Entrada -----------------------------------------------------------------
 

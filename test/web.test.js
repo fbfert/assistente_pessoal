@@ -373,3 +373,70 @@ describe('sessão', () => {
     assert.notEqual(repo.findById(u.usuario_id, db).data_nascimento, NASCIMENTO)
   })
 })
+
+describe('página pública', () => {
+  const pegar = (caminho) => fetch(`${base}${caminho}`)
+
+  test('a página é servida pelo mesmo processo, sem login de admin', async () => {
+    const r = await pegar('/')
+
+    assert.equal(r.status, 200)
+    assert.match(r.headers.get('content-type'), /text\/html/)
+
+    const html = await r.text()
+    assert.match(html, /id="tela-entrada"/)
+    assert.match(html, /id="tela-conversa"/)
+    assert.match(html, /lang="pt-BR"/)
+  })
+
+  test('estilo e script são servidos, e são os únicos recursos', async () => {
+    const html = await (await pegar('/')).text()
+
+    assert.equal((await pegar('/estilo.css')).status, 200)
+    assert.equal((await pegar('/app.js')).status, 200)
+
+    // Nenhuma origem externa: a CSP recusaria, e aqui a gente pega antes.
+    const externos = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1])
+    for (const alvo of externos) {
+      assert.ok(alvo.startsWith('/'), `recurso não é local: ${alvo}`)
+    }
+  })
+
+  test('sem script nem estilo embutidos — a CSP não abre exceção', async () => {
+    const html = await (await pegar('/')).text()
+
+    assert.ok(!/<script(?![^>]*\bsrc=)/i.test(html), 'script embutido exigiria unsafe-inline')
+    assert.ok(!/<style/i.test(html), 'estilo embutido exigiria unsafe-inline')
+    assert.ok(!/\son[a-z]+=/i.test(html), 'nenhum manipulador inline')
+  })
+
+  test('a CSP prende tudo na própria origem', async () => {
+    const csp = (await pegar('/')).headers.get('content-security-policy')
+
+    assert.match(csp, /default-src 'self'/)
+    assert.match(csp, /script-src 'self'/)
+    assert.ok(!csp.includes('unsafe-inline'), 'unsafe-inline anularia a política')
+    assert.match(csp, /frame-ancestors 'none'/)
+  })
+
+  test('o cliente escreve texto, nunca marcação', async () => {
+    const fonte = await (await pegar('/app.js')).text()
+    // Comentários fora: o arquivo EXPLICA por que não usa innerHTML, e a
+    // explicação não pode fazer o teste falhar.
+    const codigo = fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+    // É o que faz uma mensagem parecida com HTML aparecer como texto na conversa.
+    assert.ok(!codigo.includes('innerHTML'), 'innerHTML transformaria texto em marcação')
+    assert.ok(!codigo.includes('insertAdjacentHTML'))
+    assert.ok(!codigo.includes('document.write'))
+    assert.match(codigo, /textContent/)
+  })
+
+  test('o cliente não contém regra de negócio', async () => {
+    const fonte = await (await pegar('/app.js')).text()
+
+    for (const proibido of ['anamnese_estado', 'CONSENTIMENTO', 'personalidade', 'gatilho']) {
+      assert.ok(!fonte.includes(proibido), `a página não pode conhecer "${proibido}"`)
+    }
+  })
+})

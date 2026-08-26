@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>TARS</title>
+<link rel="stylesheet" href="/estilo.css">
+</head>
+<body>
+
+<main>
+  <!-- ENTRADA -->
+  <section id="tela-entrada" aria-labelledby="titulo-entrada">
+    <h1 id="titulo-entrada">TARS</h1>
+    <p class="sub">Seu assistente de rotina. Entre com os dados que você já deu a quem
+    te convidou.</p>
+
+    <div id="aviso-entrada" class="aviso" role="status" hidden></div>
+
+    <form id="form-entrada" novalidate>
+      <label for="telefone">Telefone</label>
+      <input type="tel" id="telefone" name="telefone" autocomplete="tel"
+             inputmode="tel" placeholder="+55 11 99999-9999" required>
+
+      <label for="nascimento">Data de nascimento</label>
+      <input type="date" id="nascimento" name="nascimento" autocomplete="bday" required>
+
+      <button type="submit" id="botao-entrar">Entrar</button>
+    </form>
+  </section>
+
+  <!-- CONVERSA -->
+  <section id="tela-conversa" aria-labelledby="titulo-conversa" hidden>
+    <header class="topo">
+      <h1 id="titulo-conversa">TARS</h1>
+      <button type="button" id="botao-sair" class="discreto">Sair</button>
+    </header>
+
+    <div id="aviso-conversa" class="aviso" role="status" hidden></div>
+
+    <!-- aria-live: quem usa leitor de tela ouve a resposta chegar sem procurar. -->
+    <div id="conversa" class="conversa" role="log" aria-live="polite" aria-label="Conversa"></div>
+
+    <form id="form-mensagem">
+      <label for="mensagem" class="oculto-visual">Sua mensagem</label>
+      <div class="linha">
+        <input type="text" id="mensagem" name="mensagem" autocomplete="off"
+               placeholder="Escreva aqui" required>
+        <button type="submit" id="botao-enviar">Enviar</button>
+      </div>
+      <p class="nota">Você pode responder quando der. Nada aqui cobra você.</p>
+    </form>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
