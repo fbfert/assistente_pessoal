@@ -47,7 +47,24 @@ nas linhas do histórico, que ninguém apaga.
 
 `historico_interacoes` SHALL restringir `tipo` a `gatilho_disparado`,
 `resposta_gatilho`, `despejo_espontaneo`, `silencio`, `correcao_reportada`, `anamnese`,
-`acao_admin` e `aprendizado_perfil`.
+`acao_admin`, `entrada_web` e `aprendizado_perfil`.
+
+A ampliação dessa lista em banco já existente SHALL ser feita por migração que recria a
+tabela com a constraint atualizada, dentro de transação e com as chaves estrangeiras
+desligadas, conferindo a contagem de linhas antes e depois, e SHALL ser idempotente.
+
+`entrada_web` SHALL registrar acesso da própria pessoa, e SHALL NOT ser confundido com
+`acao_admin`, que registra escrita do operador sobre ela.
+
+`aprendizado_perfil` SHALL registrar o que o sistema aprendeu sobre o participante fora da
+anamnese, e SHALL NOT ser confundido com `acao_admin`: um é evento do bot, o outro é escrita
+do operador.
+
+Linhas cujo tipo não representa mensagem — como `acao_admin` — SHALL carregar o valor
+padrão de `canal`, e a interface SHALL NOT exibir canal para elas.
+
+`historico_interacoes` SHALL ter a coluna `canal`, restrita a `whatsapp` e `web`, não
+nula, com padrão `whatsapp`.
 
 A tabela SHALL ter índice composto em `usuario_id` mais `timestamp`.
 
@@ -55,40 +72,42 @@ Linhas SHALL ser acrescentadas e nunca sobrescritas, com uma única exceção: a
 anonimização de participante, que redige o campo `texto` conforme a capacidade de
 anonimização abaixo.
 
-A ampliação da lista de tipos em banco já existente SHALL ser feita por migração que
-recria a tabela com a constraint atualizada, dentro de transação e com as chaves
-estrangeiras desligadas, conferindo a contagem de linhas antes e depois.
-
-A migração SHALL ser idempotente e SHALL NOT rodar quando a constraint já contiver o
-tipo.
-
-Motivo registrado: `CREATE TABLE IF NOT EXISTS` não altera tabela existente e o
-`ALTER TABLE` do SQLite não mexe em CHECK. Recriar o volume deixou de ser saída assim
-que o WhatsApp for pareado — a sessão vive no mesmo volume e reparear exige o chip em
-mãos. Sem desligar as chaves estrangeiras, o `DROP` da tabela antiga dispararia CASCADE
-sobre as filhas.
+Motivo registrado para o padrão: toda linha que já existe veio do WhatsApp, e deixar a
+coluna anulável obrigaria cada consulta a tratar o caso do nulo para sempre.
 
 #### Scenario: Interação registrada
 - **WHEN** qualquer interação relevante ocorre
-- **THEN** uma linha é acrescentada ao histórico com tipo, timestamp e texto, sem
+- **THEN** uma linha é acrescentada ao histórico com tipo, timestamp, texto e canal, sem
   sobrescrever linha anterior
 
 #### Scenario: Ação de admin é um tipo válido
 - **WHEN** uma ação de escrita do operador é registrada
 - **THEN** o banco aceita o tipo `acao_admin`
 
-#### Scenario: Aprendizado de perfil é um tipo válido
-- **WHEN** o sistema registra que aprendeu algo novo sobre um participante
-- **THEN** o banco aceita o tipo `aprendizado_perfil`
+#### Scenario: Linha antiga vale como WhatsApp
+- **WHEN** o histórico anterior a esta mudança é lido
+- **THEN** todas as linhas aparecem como do canal `whatsapp`
 
-#### Scenario: Migração preserva o histórico
-- **WHEN** a migração da constraint roda sobre um banco com interações já gravadas
+#### Scenario: Canal desconhecido é rejeitado
+- **WHEN** uma escrita tenta gravar um canal fora dos valores permitidos
+- **THEN** o banco rejeita a escrita
+
+#### Scenario: Entrada pela web é um tipo válido
+- **WHEN** uma entrada pelo canal web é registrada
+- **THEN** o banco aceita o tipo `entrada_web`
+
+#### Scenario: Migração da lista de tipos preserva o histórico
+- **WHEN** a migração roda sobre um banco com interações já gravadas
 - **THEN** a contagem de linhas depois é idêntica à de antes, e o índice composto
   continua existindo
 
-#### Scenario: Migração já aplicada não roda de novo
-- **WHEN** o banco abre com a constraint já atualizada
-- **THEN** nenhuma recriação de tabela acontece
+#### Scenario: Ação de admin não exibe canal
+- **WHEN** a página do participante mostra uma linha de `acao_admin`
+- **THEN** nenhum canal é exibido para ela
+
+#### Scenario: Aprendizado de perfil é um tipo válido
+- **WHEN** o sistema registra que aprendeu algo novo sobre um participante
+- **THEN** o banco aceita o tipo `aprendizado_perfil`
 
 ### Requirement: Anonimização de participante
 
@@ -96,12 +115,14 @@ O sistema SHALL oferecer a anonimização de participante como forma de saída d
 e SHALL NOT oferecer exclusão física do registro.
 
 A anonimização SHALL substituir por marcador redigido: o número de WhatsApp, todos os
-campos de anamnese, o nome e o horário de cada remédio, o campo `texto` de todas as
-interações daquele participante, e o texto de todas as notas aprendidas dele —
-removidas ou não.
+campos de anamnese, a data de nascimento, o nome e o horário de cada remédio, o campo
+`texto` de todas as interações daquele participante, e o texto de todas as notas aprendidas
+dele — removidas ou não.
 
-A anonimização SHALL preservar, em cada interação, o tipo, o timestamp e o gatilho
-relacionado.
+A anonimização SHALL apagar todas as sessões web daquele participante.
+
+A anonimização SHALL preservar, em cada interação, o tipo, o timestamp, o gatilho
+relacionado e o canal.
 
 A anonimização SHALL marcar o participante como pausado.
 
@@ -113,16 +134,17 @@ Motivo registrado: `historico_interacoes` tem exclusão em cascata a partir de
 timestamp e versão — e o rastro das ações do operador sobre o dado dele, que é
 justamente a prova exigida numa auditoria. O campo `texto` precisa ser redigido porque
 guarda respostas escritas pela própria pessoa, frequentemente com nome e detalhes de
-saúde. O texto das notas entra pelo mesmo motivo: é conteúdo escrito pela pessoa,
-recortado da conversa. Redigir tudo menos as notas seria fachada. Confundir o marcador
-de redação com o sentinela de ausência afirmaria que a pessoa nunca informou algo que
-ela informou.
+saúde. O texto das notas entra pelo mesmo motivo: é conteúdo escrito pela pessoa, recortado
+da conversa — redigir tudo menos as notas seria fachada. A data de nascimento entra por ser
+identificação direta. As sessões
+são apagadas, e não redigidas, porque uma sessão viva depois da saída do piloto seria
+acesso a um dado que a pessoa pediu para encerrar.
 
 #### Scenario: Identificação removida, estrutura preservada
 - **WHEN** um participante é anonimizado
-- **THEN** número, campos de anamnese, remédios, textos de interação e textos de notas
-  aprendidas ficam redigidos, e as linhas do histórico continuam existindo com tipo e
-  timestamp
+- **THEN** número, data de nascimento, campos de anamnese, remédios e textos de
+  interação ficam redigidos, e as linhas do histórico continuam existindo com tipo,
+  timestamp e canal
 
 #### Scenario: Consentimento continua comprovável
 - **WHEN** um participante é anonimizado
@@ -132,6 +154,11 @@ ela informou.
 - **WHEN** um remédio informado é redigido pela anonimização
 - **THEN** o valor gravado difere da constante que indica ausência de informação
 
+#### Scenario: Acesso pela web cessa imediatamente
+- **WHEN** um participante com sessão web ativa é anonimizado
+- **THEN** a sessão deixa de existir e a requisição seguinte é recusada
+
 #### Scenario: Nota já removida também é redigida
 - **WHEN** um participante com nota removida é anonimizado
 - **THEN** o texto daquela nota também fica redigido
+

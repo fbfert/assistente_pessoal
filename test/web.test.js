@@ -396,9 +396,11 @@ describe('página pública', () => {
     assert.equal((await pegar('/app.js')).status, 200)
 
     // Nenhuma origem externa: a CSP recusaria, e aqui a gente pega antes.
-    const externos = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1])
-    for (const alvo of externos) {
-      assert.ok(alvo.startsWith('/'), `recurso não é local: ${alvo}`)
+    // E nenhum caminho ABSOLUTO: a página precisa funcionar montada sob /chat.
+    const referencias = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1])
+    for (const alvo of referencias) {
+      assert.ok(!/^[a-z]+:\/\//i.test(alvo), `recurso de outra origem: ${alvo}`)
+      assert.ok(!alvo.startsWith('/'), `caminho absoluto quebra sob prefixo: ${alvo}`)
     }
   })
 
@@ -430,6 +432,15 @@ describe('página pública', () => {
     assert.ok(!codigo.includes('insertAdjacentHTML'))
     assert.ok(!codigo.includes('document.write'))
     assert.match(codigo, /textContent/)
+  })
+
+  test('o cliente chama as rotas por caminho relativo', async () => {
+    const fonte = await (await pegar('/app.js')).text()
+
+    // Absoluto sairia da raiz do domínio e cairia no admin quando montado em /chat.
+    assert.ok(!fonte.includes("'/web/entrar'"), 'caminho absoluto quebra sob prefixo')
+    assert.ok(!fonte.includes("'/web/mensagem'"), 'caminho absoluto quebra sob prefixo')
+    assert.match(fonte, /document\.baseURI/)
   })
 
   test('o cliente não contém regra de negócio', async () => {

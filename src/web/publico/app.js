@@ -11,6 +11,19 @@
 
 const CHAVE_TOKEN = 'tars.token'
 
+/**
+ * Endereços RELATIVOS à pasta da página, nunca absolutos.
+ *
+ * É o que permite montar isto sob qualquer prefixo — em produção a página vive
+ * em /chat/ e o Apache tira o prefixo antes de repassar ao container. Com
+ * `/web/entrar` fixo, a chamada sairia da raiz do domínio e cairia no admin.
+ *
+ * Depende de a URL terminar em barra: `/chat/` resolve para `/chat/web/entrar`,
+ * enquanto `/chat` resolveria para `/web/entrar`. Quem garante a barra é o
+ * redirecionamento no proxy.
+ */
+const rota = (caminho) => new URL(caminho, document.baseURI).toString()
+
 const el = (id) => document.getElementById(id)
 
 const telas = {
@@ -106,7 +119,7 @@ el('form-entrada').addEventListener('submit', async (evento) => {
   botao.textContent = 'Entrando...'
 
   try {
-    const resposta = await fetch('/web/entrar', {
+    const resposta = await fetch(rota('web/entrar'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -165,7 +178,7 @@ el('form-mensagem').addEventListener('submit', async (evento) => {
   const pensando = bolha('pensando', 'digitando...')
 
   try {
-    const resposta = await fetch('/web/mensagem', {
+    const resposta = await fetch(rota('web/mensagem'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({ texto }),

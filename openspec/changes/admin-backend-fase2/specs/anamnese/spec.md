@@ -41,21 +41,33 @@ deixaria de comprovar o que promete comprovar.
 
 ### Requirement: Máquina de estados de 13 posições
 
-A anamnese SHALL progredir por estados numerados de 0 a 12, avançando no máximo um
-estado por mensagem recebida: 0 CONSENTIMENTO, 1 NOME, 2 O_QUE_TRAVA, 3 ROTINA,
-4 GATILHOS_DE_SOBRECARGA, 5 SINAL_DE_ALERTA, 6 REMEDIO, 7 PESSOAS_CHAVE,
-8 VOCABULARIO_PROPRIO, 9 NUNCA_FAZER, 10 PERSONALIDADE, 11 RESUMO, 12 CONCLUIDO.
+A anamnese SHALL progredir por estados numerados de 0 a 12, avançando no máximo um estado por
+mensagem recebida: 0 CONSENTIMENTO, 1 NOME, 2 O_QUE_TRAVA, 3 ROTINA, 4 GATILHOS_DE_SOBRECARGA,
+5 SINAL_DE_ALERTA, 6 REMEDIO, 7 PESSOAS_CHAVE, 8 VOCABULARIO_PROPRIO, 9 NUNCA_FAZER,
+10 PERSONALIDADE, 11 RESUMO, 12 CONCLUIDO.
 
-Os estados SHALL ser expostos como um enum congelado (`Object.freeze`), e nenhum
-módulo pode comparar contra o número literal em vez do enum.
+Os estados SHALL ser expostos como um enum congelado (`Object.freeze`), e nenhum módulo pode
+comparar contra o número literal em vez do enum.
 
-A transição SHALL ser calculada por funções puras que não importam a camada de
-banco: recebem o usuário atual, o texto da resposta e as dependências injetadas, e
-devolvem um plano de ação que o chamador aplica. Isso existe para permitir teste
-sem SQLite real.
+A transição SHALL ser calculada por funções puras que não importam a camada de banco: recebem
+o usuário atual, o texto da resposta e as dependências injetadas, e devolvem um plano de ação
+que o chamador aplica. Isso existe para permitir teste sem SQLite real.
+
+A máquina de estados SHALL ser independente de canal: o estado é do participante, não do
+transporte, e uma anamnese iniciada por um canal SHALL poder continuar por outro, do ponto
+em que parou.
+
+O texto das perguntas, do consentimento, do pedido de exemplo e da conclusão SHALL ter
+origem única, compartilhada por todos os canais. Nenhum canal SHALL manter cópia própria
+desses textos.
 
 O texto das perguntas SHALL ser lido do conteúdo versionado, semeado a partir das
 constantes do código, sem alterar a pureza das funções de transição.
+
+Motivo registrado: duplicar o conteúdo por canal faria a correção de uma pergunta valer só
+para quem estivesse do lado corrigido — e o participante não tem como saber que existem duas
+versões. Ler do conteúdo versionado é o que faz a origem única valer também para quem edita
+pela interface.
 
 #### Scenario: Avanço normal de estado
 - **WHEN** o usuário no estado 2 (O_QUE_TRAVA) responde com um texto concreto
@@ -64,6 +76,10 @@ constantes do código, sem alterar a pureza das funções de transição.
 #### Scenario: Uma pergunta por mensagem
 - **WHEN** a máquina de estados processa qualquer resposta
 - **THEN** o plano de ação devolvido contém no máximo uma pergunta ao usuário
+
+#### Scenario: Anamnese continua no outro canal
+- **WHEN** um participante responde até o estado 4 por um canal e escreve pelo outro
+- **THEN** recebe a pergunta do estado 5, sem repetir nenhuma anterior
 
 #### Scenario: Pergunta editada alcança a conversa
 - **WHEN** o operador altera o texto de uma pergunta da anamnese

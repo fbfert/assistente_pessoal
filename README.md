@@ -367,12 +367,28 @@ inventado por padrão.
 
 ### O link que a pessoa usa
 
-O servidor escuta na porta do canal web (`WEB_PORT`, padrão `3400`), publicada **apenas
-no loopback do host**, como o admin. Alcançar de fora exige uma entrada no proxy
-reverso do Apache — que vive em `public_html/.htaccess`, **fora do Git**, e é decisão
-de quem opera.
+**https://tdah.xiax.com.br/chat/**
 
-Para conferir localmente, com túnel SSH:
+O servidor escuta na porta do canal web (`WEB_PORT`, padrão `3400`), publicada apenas
+no loopback do host — como o admin. Quem expõe é o proxy reverso do Apache, em
+`public_html/.htaccess`, que **vive fora do Git**. Por isso a regra fica registrada
+aqui: se o arquivo se perder, é isto que precisa voltar, **antes** da regra que manda
+tudo para o admin na 3300.
+
+```apache
+RewriteRule ^chat$ /chat/ [R=301,L]
+RewriteRule ^chat/(.*)$ http://127.0.0.1:3400/$1 [P,L]
+```
+
+O prefixo `/chat` é **retirado** antes de repassar: o container serve a página na raiz
+dele e não sabe onde está montado. É por isso que a página usa caminhos relativos — e
+é por isso que a **barra final importa**. Sem ela, `app.js` resolveria para a raiz do
+domínio e cairia no admin; o redirecionamento 301 da primeira linha existe para isso.
+
+O canal web **não herda o login do admin**: são portas e processos diferentes, e a raiz
+do domínio continua indo para a 3300, atrás de sessão.
+
+Para conferir sem passar pelo proxy, com túnel SSH:
 
 ```bash
 ssh -L 3400:localhost:3400 usuario@<ip-do-servidor>
@@ -397,6 +413,9 @@ participante**: quem não foi convidado não entra.
   conversa continua de onde parou.
 - **A página não carrega nada de fora** — sem framework, sem CDN, sem build. Uma CSP
   restrita ao próprio domínio faz o navegador recusar qualquer exceção.
+- **Cada visitante tem o próprio limite.** O Express confia no cabeçalho do proxy, então
+  o endereço que conta é o de quem acessa, não o `127.0.0.1` do Apache — sem isso,
+  cinco erros de um desconhecido trancariam todo mundo.
 
 > **O par telefone + data de nascimento é deliberadamente fraco.** Foi escolhido para
 > não exigir senha de quem tem TDAH no primeiro contato. Se o piloto crescer, é a
