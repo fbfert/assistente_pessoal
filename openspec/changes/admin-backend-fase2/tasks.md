@@ -22,8 +22,9 @@
 - [ ] 2.2 Comentar a mudança no arquivo, que hoje é explícito sobre "nenhum módulo
       acessa process.env diretamente"
 - [ ] 2.3 Chaves: janela de resposta, limiar de silêncio, horários padrão,
-      provedor de LLM, `DEBOUNCE_SEGUNDOS`, `TESTE_IA_LIMITE_HORA`
-- [ ] 2.4 Validação por tipo: faixa numérica, formato de horário, opções fechadas
+      `DEBOUNCE_SEGUNDOS`, `TESTE_IA_LIMITE_HORA` — o provedor ativo NÃO entra
+      aqui: é da tela de credenciais (`conexao-llm`, decisão (f))
+- [ ] 2.4 Validação por tipo: faixa numérica e formato de horário
 - [ ] 2.5 Chave de API recusada — nunca aceita nem exibida
 - [ ] 2.6 Histórico e auditoria em toda gravação e reversão
 - [ ] 2.7 Testes: os três degraus de leitura, validação recusando, histórico,
@@ -52,7 +53,8 @@
 
 ## 5. Tela de IA / Persona
 
-- [ ] 5.1 Núcleo, três variantes e provedor ativo numa tela
+- [ ] 5.1 Núcleo e três variantes numa tela; provedor ativo em leitura, com link
+      para `/credenciais`, que é quem o edita
 - [ ] 5.2 Confirmação reforçada valendo também por este caminho
 - [ ] 5.3 Teste de mensagem: contexto fictício, rascunho não salvo, resposta na tela
 - [ ] 5.4 Limite de 20 por administrador/hora, teto vindo da configuração viva;

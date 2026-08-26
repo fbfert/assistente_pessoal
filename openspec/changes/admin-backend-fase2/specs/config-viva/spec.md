@@ -1,8 +1,8 @@
 ## Purpose
 
 Tirar do código os parâmetros que o piloto existe para calibrar — janelas,
-limiares, horários padrão e a escolha de provedor — para que ajustá-los seja
-questão de segundos na interface, com autor registrado e caminho de volta.
+limiares e horários padrão — para que ajustá-los seja questão de segundos na
+interface, com autor registrado e caminho de volta.
 
 ## ADDED Requirements
 
@@ -36,8 +36,6 @@ Chave numérica SHALL ser validada contra uma faixa declarada.
 Chave de horário SHALL ser aceita apenas no formato de vinte e quatro horas com
 hora e minuto.
 
-Chave de escolha SHALL ser aceita apenas entre as opções declaradas para ela.
-
 #### Scenario: Número fora da faixa
 - **WHEN** se tenta gravar um limiar de silêncio negativo
 - **THEN** a gravação é recusada e o valor anterior permanece
@@ -46,24 +44,25 @@ Chave de escolha SHALL ser aceita apenas entre as opções declaradas para ela.
 - **WHEN** se tenta gravar um horário que não segue o formato esperado
 - **THEN** a gravação é recusada
 
-#### Scenario: Escolha fora das opções
-- **WHEN** se tenta gravar um provedor de LLM que não está na lista disponível
-- **THEN** a gravação é recusada
-
-### Requirement: Chave de API nunca é configurável pela interface
+### Requirement: Chave de API nunca entra na configuração viva
 
 O sistema SHALL NOT expor, aceitar nem armazenar chave de API de provedor na
 configuração editável.
 
-A chave SHALL permanecer exclusivamente no ambiente do processo.
+A chave SHALL permanecer fora do banco.
 
 Motivo registrado: a configuração editável é lida e escrita pela interface e fica
-no banco, que é copiado em backup e lido por dois processos. Segredo de terceiro
-não pertence a esse ciclo.
+no banco, que é copiado em backup, lido por dois processos e tem "ver histórico"
+como funcionalidade. Segredo de terceiro não pertence a esse ciclo — ele vive num
+arquivo próprio do volume, sem histórico e sem reversão (mudança `conexao-llm`).
 
-#### Scenario: Só a escolha do provedor é editável
+#### Scenario: Nenhuma chave na tela de configuração
 - **WHEN** a tela de configuração é exibida
-- **THEN** aparece qual provedor está ativo, e nenhuma chave de API
+- **THEN** nenhum campo de chave de API aparece
+
+#### Scenario: Nenhuma chave no banco
+- **WHEN** a configuração viva é lida por inteiro
+- **THEN** nenhuma chave de API está entre os valores armazenados
 
 ### Requirement: Histórico de toda mudança
 

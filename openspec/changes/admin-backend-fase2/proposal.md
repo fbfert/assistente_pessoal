@@ -28,18 +28,20 @@ parte desta mudança**: já foram entregues pelas mudanças arquivadas
 
 ## What Changes
 
-- **Config viva**: valores numéricos, horários e escolhas passam a viver no banco,
-  editáveis pela interface, com histórico de autor e reversão para qualquer versão
-  anterior. A chave de API **não** entra — continua só no ambiente.
+- **Config viva**: valores numéricos e horários passam a viver no banco, editáveis
+  pela interface, com histórico de autor e reversão para qualquer versão anterior.
+  A chave de API **não** entra: ela vive no arquivo de credenciais da mudança
+  `conexao-llm`, fora do banco, sem histórico e sem reversão — de propósito.
 - **Conteúdo versionado**: núcleo fixo, variantes de tom, mensagens de gatilho,
   perguntas da anamnese e texto de consentimento passam a ser lidos do banco, com
   o conteúdo de hoje como semente. Restaurar o padrão de fábrica volta a ela.
 - **Tela de Gatilhos**: visão de conjunto que não existe hoje — quantos
   participantes têm cada tipo ativo, horário e mensagem padrão editáveis ali, e o
   estado por participante em leitura, com link para a página de detalhe.
-- **Tela de IA / Persona**: núcleo, variantes e provedor num lugar só, mais um
-  campo de teste que roda o LLM de verdade contra um contexto fictício, sem tocar
-  em nenhum participante.
+- **Tela de IA / Persona**: núcleo e variantes num lugar só, mais um campo de
+  teste que roda o LLM de verdade contra um contexto fictício, sem tocar em
+  nenhum participante. O provedor ativo aparece em leitura, com link para a tela
+  de credenciais, que é quem o edita.
 - **Consentimento versionado**: editar o texto **sempre** incrementa a versão.
 - **Debounce**: no chat livre, o bot espera alguns segundos após a última mensagem
   antes de responder, agrupando o que chegou. Nunca durante a anamnese.
@@ -67,7 +69,6 @@ parte desta mudança**: já foram entregues pelas mudanças arquivadas
 - `anamnese`: perguntas e texto de consentimento vêm do banco; a versão do
   consentimento passa a ser derivada do conteúdo.
 - `canal-whatsapp`: o chat livre passa pelo debounce; a anamnese não.
-- `llm-provider`: o provedor ativo passa a vir da configuração viva.
 - `dashboard-piloto`: as duas telas novas entram na navegação.
 
 ## Impact
@@ -85,5 +86,6 @@ parte desta mudança**: já foram entregues pelas mudanças arquivadas
   regras de segurança — passa a ser editável pela interface. Decisão registrada do
   dono do produto; a compensação é confirmação reforçada e reversão fácil, não
   bloqueio técnico.
-- **Fora de escopo:** papéis e permissões; chave de API na interface; edição de
-  configuração por participante (só global).
+- **Fora de escopo:** papéis e permissões; chave de API na interface; **a escolha
+  do provedor ativo**, que passou para a mudança `conexao-llm` (decisão (f) do
+  design dela); edição de configuração por participante (só global).

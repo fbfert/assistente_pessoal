@@ -82,8 +82,9 @@
 - [ ] 8.8 Auditoria da troca de provedor ativo
 - [ ] 8.9 `src/transcription/transcribe.js`: parar de devolver o corpo bruto da
       resposta de erro — só provedor e código de status
-- [ ] 8.10 Revisar o delta `llm-provider` de `admin-backend-fase2`, que ainda diz que
-      o provedor ativo vem da configuração viva (decisão (f) do design)
+- [x] 8.10 Revisar o delta `llm-provider` de `admin-backend-fase2`, que ainda dizia
+      que o provedor ativo vem da configuração viva (decisão (f) do design) — o
+      delta foi removido de lá, e o motivo ficou registrado no design daquela mudança
 
 ## 9. Testes dos itens novos
 

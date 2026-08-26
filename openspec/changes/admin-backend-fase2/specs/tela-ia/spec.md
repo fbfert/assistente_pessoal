@@ -1,24 +1,34 @@
 ## Purpose
 
-Reunir núcleo fixo, variantes de tom e escolha de provedor numa página só, e
-permitir experimentar o efeito de uma alteração contra o LLM real antes de
-publicá-la — em vez de descobrir o efeito quando um participante responder.
+Reunir núcleo fixo e variantes de tom numa página só, e permitir experimentar o
+efeito de uma alteração contra o LLM real antes de publicá-la — em vez de descobrir
+o efeito quando um participante responder.
 
 ## ADDED Requirements
 
 ### Requirement: Persona reunida em uma tela
 
-A tela SHALL apresentar, para edição: o núcleo fixo, as três variantes de tom e o
-provedor de LLM ativo.
+A tela SHALL apresentar, para edição: o núcleo fixo e as três variantes de tom.
 
 A gravação do núcleo fixo SHALL exigir a confirmação reforçada; as variantes SHALL
 usar a confirmação padrão.
 
-A tela SHALL NOT exibir nem aceitar chave de API.
+A tela SHALL exibir qual provedor de LLM está ativo, em leitura, com link para a
+tela que o edita.
 
-#### Scenario: Provedor sem chave
+A tela SHALL NOT editar o provedor ativo, e SHALL NOT exibir nem aceitar chave de
+API.
+
+Motivo registrado: o provedor ativo é escolhido na tela de credenciais, junto da
+chave que o faz funcionar e do teste que prova que ela funciona (mudança
+`conexao-llm`, decisão (f)). Duas telas editando o mesmo botão em fontes de verdade
+diferentes deixariam quem mudasse na tela errada sem efeito nenhum e sem
+explicação.
+
+#### Scenario: Provedor em leitura, sem chave
 - **WHEN** a tela é exibida
-- **THEN** mostra qual provedor está ativo e nenhum campo de chave de API
+- **THEN** mostra qual provedor está ativo, com link para a tela de credenciais, e
+  nenhum campo de chave de API nem de troca de provedor
 
 ### Requirement: Teste de mensagem isolado do piloto
 

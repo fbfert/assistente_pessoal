@@ -48,11 +48,39 @@ A ordem de leitura fica, então, com três degraus, e não dois:
 
 1. `config_global`, se a chave existir;
 2. variável de ambiente, para as chaves que têm uma (`RESPOSTA_GATILHO_JANELA_MIN`,
-   `SILENCIOS_ATE_REDUZIR_TOM`, `LLM_PROVIDER`);
+   `SILENCIOS_ATE_REDUZIR_TOM`);
 3. a constante do código, sempre.
 
 Assim nenhuma chave fica sem valor, e o degrau 3 é o que permite `schema.sql`
 subir sem semear nada.
+
+### O provedor ativo saiu daqui — foi para a tela de credenciais
+
+**Revisão posterior deste documento.** A versão inicial punha a escolha de
+provedor na configuração viva, e o delta `llm-provider` desta mudança dizia isso.
+A mudança `conexao-llm`, na decisão (f) do design dela, passou o seletor para a
+tela de credenciais: rádio único, gravado no próprio arquivo
+`/data/llm-chaves.json` sob a chave `ativo`, resolvido antes de `LLM_PROVIDER`.
+
+Manter os dois seria pior que qualquer um sozinho: duas telas editando o mesmo
+botão em fontes de verdade diferentes, e quem mudasse na tela errada não veria
+efeito nenhum, sem ter como entender por quê.
+
+O que decidiu foi a coerência do gesto — escolhe-se o provedor no mesmo lugar e no
+mesmo momento em que se dá a chave a ele, e é lá que também se testa se ela
+funciona. Aqui não havia credencial nenhuma, por decisão explícita desta mudança.
+
+Consequências nesta mudança, todas já aplicadas:
+
+- O delta `llm-provider` **deixou de existir**: as três afirmações dele (provedor
+  vindo da config viva, troca valendo sem reinício, chave só no ambiente) passaram
+  todas para o delta correspondente da `conexao-llm`.
+- `LLM_PROVIDER` saiu da lista de chaves com degrau de ambiente, acima.
+- A tela de IA exibe o provedor ativo e **linka** para a de credenciais, em vez de
+  editá-lo.
+- A configuração viva ficou sem nenhuma chave de opções fechadas — as restantes são
+  numéricas e de horário —, então o tipo "escolha" saiu da capability `config-viva`
+  junto. Volta quando surgir a primeira chave que o use.
 
 ### Duas tabelas de conteúdo, não uma
 
