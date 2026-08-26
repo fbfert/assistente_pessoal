@@ -1,5 +1,5 @@
 import { getDb } from './db.js'
-import { TIPOS_INTERACAO } from '../constants.js'
+import { TIPOS_INTERACAO, CANAIS } from '../constants.js'
 import { config } from '../config.js'
 
 /**
@@ -7,15 +7,24 @@ import { config } from '../config.js'
  * é a base das métricas do piloto e do rastro de consentimento.
  */
 export function registrar(
-  { usuarioId, tipo, texto = null, gatilhoRelacionado = null, timestamp = new Date().toISOString() },
+  {
+    usuarioId,
+    tipo,
+    texto = null,
+    gatilhoRelacionado = null,
+    timestamp = new Date().toISOString(),
+    // Padrão explícito: quem não informa canal está no fluxo do WhatsApp, que é
+    // o único que existia quando cada um destes chamadores foi escrito.
+    canal = CANAIS.WHATSAPP,
+  },
   db = getDb(),
 ) {
   const { lastInsertRowid } = db
     .prepare(
-      `INSERT INTO historico_interacoes (usuario_id, tipo, timestamp, texto, gatilho_relacionado)
-            VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO historico_interacoes (usuario_id, tipo, timestamp, texto, gatilho_relacionado, canal)
+            VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(usuarioId, tipo, timestamp, texto, gatilhoRelacionado)
+    .run(usuarioId, tipo, timestamp, texto, gatilhoRelacionado, canal)
   return db.prepare('SELECT * FROM historico_interacoes WHERE interacao_id = ?').get(lastInsertRowid)
 }
 

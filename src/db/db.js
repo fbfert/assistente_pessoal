@@ -3,6 +3,7 @@ import { readFileSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from '../config.js'
+import { migrar } from './migracoes.js'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const SCHEMA_PATH = join(AQUI, 'schema.sql')
@@ -46,6 +47,10 @@ export function abrirDb(caminho = config.db.path) {
   // de uma pausa de milissegundos.
   db.pragma('busy_timeout = 5000')
   db.exec(readFileSync(SCHEMA_PATH, 'utf8'))
+
+  // O schema cria o que falta; a migração ajusta o que já existe. Coluna nova em
+  // tabela existente só entra por aqui — ver migracoes.js.
+  migrar(db)
 
   instancia = db
   caminhoAberto = caminho

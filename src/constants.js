@@ -35,6 +35,22 @@ export const TIPOS_GATILHO = Object.freeze({
   CHECKLIST_FIM_DIA: 'checklist_fim_dia',
 })
 
+/**
+ * Canais por onde uma conversa pode acontecer.
+ *
+ * `whatsapp` é o padrão histórico: toda linha gravada antes desta constante veio
+ * de lá, e é por isso que a coluna nasce com esse valor por omissão em vez de
+ * anulável — nulo obrigaria toda consulta a tratar o caso, para sempre.
+ *
+ * A diferença entre os dois não é só de transporte: só o WhatsApp recebe
+ * mensagem não solicitada (gatilho, lembrete, cobrança de silêncio). A web é
+ * reativa — é onde a pessoa procura o TARS, não onde o TARS procura a pessoa.
+ */
+export const CANAIS = Object.freeze({
+  WHATSAPP: 'whatsapp',
+  WEB: 'web',
+})
+
 /** Tipos de interação registráveis no histórico append-only. */
 export const TIPOS_INTERACAO = Object.freeze({
   GATILHO_DISPARADO: 'gatilho_disparado',

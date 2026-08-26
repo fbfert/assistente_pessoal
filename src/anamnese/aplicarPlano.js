@@ -1,5 +1,6 @@
 import * as repo from '../db/userRepo.js'
 import { registrar } from '../db/interactionLog.js'
+import { CANAIS } from '../constants.js'
 import { montarResumoAnamnese } from './stateMachine.js'
 
 /**
@@ -10,9 +11,12 @@ import { montarResumoAnamnese } from './stateMachine.js'
  * ordem importa: `montarResumo` precisa ler o usuário já com a personalidade
  * gravada.
  *
+ * `canal` é aditivo e tem padrão: quem não informa está no fluxo do WhatsApp,
+ * que era o único canal quando esta função foi escrita.
+ *
  * @returns {{mensagens: string[]}} mensagens a enviar, já resolvidas
  */
-export function aplicarPlano(usuarioId, plano, db) {
+export function aplicarPlano(usuarioId, plano, db, canal = CANAIS.WHATSAPP) {
   const mensagens = [...plano.mensagens]
 
   for (const acao of plano.acoes) {
@@ -43,7 +47,7 @@ export function aplicarPlano(usuarioId, plano, db) {
 
       case 'registrarInteracao':
         registrar(
-          { usuarioId, tipo: acao.tipoInteracao, texto: acao.texto },
+          { usuarioId, tipo: acao.tipoInteracao, texto: acao.texto, canal },
           db,
         )
         break

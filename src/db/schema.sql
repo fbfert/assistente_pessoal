@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS usuarios (
   -- rotina_boa e rotina_ruim existem separados de propósito: no MVP o estado 3
   -- pede as duas coisas numa mensagem só e tudo cai em rotina_boa. A coluna
   -- rotina_ruim já existe para que separar depois não exija migração.
+  -- Segundo fator da entrada pelo canal web. ANULÁVEL de propósito: participante
+  -- cadastrado antes desta coluna não tem o dado, e inventá-lo seria dado falso.
+  -- Sem ela a pessoa não entra pela web até o operador preencher — o que é
+  -- recusa de acesso, não perda de dado.
+  data_nascimento         TEXT,
+
   nome                    TEXT,
   o_que_trava             TEXT,
   rotina_boa              TEXT,
@@ -98,7 +104,11 @@ CREATE TABLE IF NOT EXISTS historico_interacoes (
   timestamp           TEXT    NOT NULL,
   texto               TEXT,
   -- Tipo do gatilho a que esta linha se refere (disparo, resposta ou silêncio).
-  gatilho_relacionado TEXT
+  gatilho_relacionado TEXT,
+  -- Por onde a mensagem chegou. NOT NULL com padrão: toda linha anterior a esta
+  -- coluna veio do WhatsApp, e anulável obrigaria cada consulta a tratar o nulo.
+  canal               TEXT    NOT NULL DEFAULT 'whatsapp'
+                              CHECK (canal IN ('whatsapp', 'web'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_historico_usuario_timestamp
@@ -165,3 +175,21 @@ CREATE TABLE IF NOT EXISTS auditoria_admin (
 
 CREATE INDEX IF NOT EXISTS idx_auditoria_admin_momento
   ON auditoria_admin (momento);
+
+-- Sessões do canal web.
+--
+-- ÚNICA tabela do projeto de onde apagar é o comportamento correto. Credencial
+-- vencida não prova nada e, mantida, só aumenta o que vaza junto num backup. O
+-- rastro de que a pessoa entrou fica em historico_interacoes, que ninguém apaga.
+--
+-- Guarda o HASH do token, nunca o valor: quem ler o banco não consegue se passar
+-- por ninguém. Mesmo princípio da senha do operador.
+CREATE TABLE IF NOT EXISTS sessoes_web (
+  sessao_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash TEXT    NOT NULL UNIQUE,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+  criado_em  TEXT    NOT NULL DEFAULT (datetime('now')),
+  expira_em  TEXT    NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessoes_web_expira ON sessoes_web (expira_em);
