@@ -472,6 +472,11 @@ chave de API e sem número.
 
 ## Como funciona
 
+**Dois canais, um caminho.** WhatsApp e web são adaptadores finos sobre o mesmo
+núcleo de conversa (`src/conversa/nucleo.js`): mesma anamnese, mesma classificação,
+mesma persona, mesmo LLM. O que muda é só o transporte — e quem manda mensagem sem
+ser chamado, que continua sendo só o WhatsApp.
+
 **Anamnese** (13 estados, 0 a 12): consentimento → nome → o que trava → rotina →
 gatilhos de sobrecarga → sinal de alerta → remédio → pessoas-chave → vocabulário
 próprio → nunca fazer → personalidade → resumo → concluído.

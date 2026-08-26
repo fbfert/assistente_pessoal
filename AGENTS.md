@@ -108,14 +108,31 @@ artefato a qualquer momento), mas implementar sem proposta aprovada não é flui
   não o remova.
 - **Onboarding é proativo**, não reativo: quem manda a primeira mensagem é o bot
   (`convidarPiloto`). O branch reativo do handler é só rede de segurança.
-- **Segurança de rede:** o processo do admin nunca é alcançável direto da internet.
-  No Compose ele escuta `0.0.0.0` *dentro do container* e quem restringe é o bind
-  `127.0.0.1:3300` da publicação de porta; rodando direto no host, escuta
-  `127.0.0.1`. Confira sempre pela porta observada no host (`ss -ltn | grep 3300`),
-  nunca pelo que o processo loga.
-  O acesso externo passa por um proxy reverso do Apache em `tdah.xiax.com.br`
-  (`public_html/.htaccess`, **fora do Git**) ou por túnel SSH. Quem autentica é a
-  aplicação, não o proxy.
+- **Segurança de rede:** o projeto tem **duas** superfícies HTTP, e elas não se
+  misturam.
+
+  **O admin (3300) nunca é alcançável sem sessão.** No Compose ele escuta `0.0.0.0`
+  *dentro do container* e quem restringe é o bind `127.0.0.1:3300` da publicação de
+  porta; rodando direto no host, escuta `127.0.0.1`. Confira sempre pela porta
+  observada no host (`ss -ltn | grep 3300`), nunca pelo que o processo loga.
+
+  **O canal web (3400) é público de verdade**, em `tdah.xiax.com.br/chat/`. É a
+  primeira superfície deste projeto aberta a quem não tem login, e serve conversa
+  com dado de saúde. Processo do bot, Express PRÓPRIO, porta própria: uma rota mal
+  configurada lá não alcança o admin. Não junte os dois no mesmo servidor.
+
+  O que protege a entrada pública é a aplicação, não o proxy: mesma resposta para
+  qualquer recusa (dizer *qual* dado errou revelaria quem está no piloto), 5
+  tentativas por 15 min contadas por origem **e** por telefone, e atraso fixo por
+  falha. A contagem por telefone é a que segura ataque distribuído — o endereço
+  chega por proxy e é forjável.
+
+  **O `trust proxy` do Express não é detalhe:** sem ele, `req.ip` seria `127.0.0.1`
+  para todo mundo e cinco erros de um desconhecido trancariam o piloto inteiro.
+  Confira no log qual origem foi registrada, não presuma.
+
+  Os dois passam pelo mesmo proxy reverso do Apache (`public_html/.htaccess`,
+  **fora do Git** — a regra do `/chat` está no README para não se perder junto).
 - **Segredos nunca entram no Git.** `.env` é gitignored; `.env.example` documenta as variáveis
   sem valores.
 - **Testes:** `npm test` (`node --test test/*.test.js` — o diretório sozinho não
@@ -165,9 +182,18 @@ src/dashboard/
 - **Comparação de senha em tempo constante**, e trabalho descartável quando o
   e-mail não existe — senão o tempo de resposta enumera contas.
 - **Toda escrita é auditada**, e a auditoria nomeia o autor.
-- **Confirmação em duas etapas para ação destrutiva.** O projeto não tem JavaScript
-  de cliente; a página intermediária em GET faz o papel do `confirm()`. Ela descreve
-  o efeito e não altera nada.
+- **Confirmação em duas etapas para ação destrutiva.** O **admin** não tem
+  JavaScript de cliente; a página intermediária em GET faz o papel do `confirm()`.
+  Ela descreve o efeito e não altera nada.
+
+  A invariante é do admin, e só dele — ferramenta interna, um operador, atrás de
+  login, onde o custo de um reload é zero e o de uma dependência é permanente. A
+  **página pública do chat** tem JavaScript mínimo (`fetch` e DOM, sem framework e
+  sem build), por decisão registrada: sem envio assíncrono, cada mensagem
+  recarregaria a página e perderia o foco do campo. O limite dela também é
+  invariante: sem framework, sem build, sem recurso externo, e **nenhuma regra de
+  negócio no cliente** — há teste que falha se a página passar a conhecer estado de
+  anamnese.
 - **Guardas de servidor, não de interface.** Esconder o botão nunca basta: não se
   desativa a própria conta nem a última conta ativa, e não se convida quem já tem
   progresso de anamnese.
@@ -188,6 +214,41 @@ estrangeira e quebraria a premissa de toda consulta existente, que assume a linh
 do tempo de uma pessoa; inventar um participante-sistema poria dado falso na
 contagem do painel.
 
+## 5b. Um núcleo de conversa, dois canais
+
+O TARS conversa por **dois transportes**, e existe **um** caminho de decisão.
+
+```
+src/conversa/nucleo.js     processarMensagem({usuario, texto, canal, responder}, deps)
+src/whatsapp/handler.js    adaptador: Baileys → núcleo
+src/web/                   adaptador: HTTP → núcleo
+  servidor.js              Express próprio, porta própria, rotas públicas
+  tentativas.js            limite por origem E por telefone
+  publico/                 a página (HTML + CSS + JS mínimo)
+```
+
+**O núcleo não conhece transporte.** Recebe a pessoa já identificada, o texto já em
+forma de texto, o canal e uma função de envio **sem endereço**. Não importa nada de
+`src/whatsapp/` nem de `src/web/` — há teste que falha se importar.
+
+**O adaptador não decide nada.** Identifica quem é, obtém o texto, entrega a função
+de envio. Não escolhe entre anamnese e conversa livre, não classifica, não monta
+prompt, não chama o LLM — há teste que falha se voltar a fazer isso.
+
+O que é de transporte fica no adaptador e **não sobe**: transcrição de áudio, filtro
+de grupo e eco do próprio bot, e a rede de segurança do remetente desconhecido. Na
+web não existe remetente desconhecido — quem não tem sessão é recusado antes, e
+criar participante ali seria autocadastro num sistema que guarda dado de saúde.
+
+Motivo de tudo isso, em uma frase: enquanto a decisão viver dentro de um adaptador,
+acrescentar um canal significa copiá-la — e a partir da primeira cópia as duas
+divergem em silêncio, cada correção valendo só para um lado.
+
+**A web é reativa. Ponto.** Sem check-in, sem lembrete, sem cobrança de silêncio,
+sem notificação de navegador. Todo gatilho sai pelo WhatsApp, inclusive para quem só
+usa a web. A web é onde a pessoa procura o TARS; o WhatsApp é onde o TARS procura a
+pessoa. Isso é decisão de produto — não "conserte" o scheduler para ganhar um canal.
+
 ## 6. Mudança de schema depois do pareamento
 
 O schema usa `CREATE TABLE IF NOT EXISTS`: **um banco já existente não ganha
@@ -197,7 +258,18 @@ recriando o volume, porque o banco estava vazio.
 **Isso deixa de ser possível assim que o WhatsApp for pareado.** `/data/auth` vive
 no mesmo volume: apagá-lo derruba a sessão, e reparear exige o chip em mãos.
 
-A partir daí, mudança de schema pede script de migração. Em SQLite, alterar um
+A partir daí, mudança de schema pede script de migração. **Isso deixou de ser
+hipótese:** `src/db/migracoes.js` existe, é chamado por `abrirDb` logo depois do
+`schema.sql`, e já cobre os dois casos —
+
+- **coluna nova**, com `ALTER TABLE ... ADD COLUMN`, que o SQLite faz sem recriar
+  nada (idempotente por `PRAGMA table_info`);
+- **CHECK ampliado**, que exige o procedimento completo abaixo (idempotente por
+  inspeção de `sqlite_master`, contando as linhas antes e depois e abortando se
+  divergirem).
+
+Acrescente ali, no mesmo padrão — não escreva migração solta nem recrie volume. Em
+SQLite, alterar um
 CHECK constraint não se faz com `ALTER TABLE`: dentro de uma transação e com
 `PRAGMA foreign_keys=OFF`, cria-se a tabela nova com a constraint atualizada,
 copiam-se os dados, dropa-se a antiga e renomeia-se. O `foreign_keys=OFF` é
