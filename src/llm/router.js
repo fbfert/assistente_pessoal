@@ -1,22 +1,37 @@
 import { config } from '../config.js'
-import { ler } from './chavesRepo.js'
+import { ler, lerAtivo } from './chavesRepo.js'
 
 export const PROVIDERS_DISPONIVEIS = Object.freeze(['claude', 'openai', 'deepseek'])
 
 /**
+ * Provedor ativo na conversa: arquivo de credenciais primeiro, ambiente depois.
+ *
+ * É função, não constante, porque o arquivo muda sem reinício — congelar o valor
+ * na subida faria a troca pela tela não alcançar este processo.
+ */
+export function providerAtivo() {
+  return lerAtivo() ?? config.llm.defaultProvider
+}
+
+/**
  * Chamada única de LLM, despachada para o provedor escolhido.
  *
- * Trocar de provedor é variável de ambiente (LLM_PROVIDER) — nenhum chamador
- * precisa saber qual API está por baixo.
+ * Trocar de provedor é a tela de credenciais (ou `LLM_PROVIDER`) — nenhum
+ * chamador precisa saber qual API está por baixo.
  *
- * @param {{systemPrompt: string, mensagens: Array<{role: string, content: string}>, provider?: string, maxTokens?: number}} opcoes
+ * `credencial` existe para UM caso: o botão de testar do admin, que precisa
+ * validar uma chave que o operador acabou de digitar e ainda NÃO gravou. Nenhum
+ * caminho de conversa a usa — o padrão continua sendo resolver do arquivo/ambiente.
+ *
+ * @param {{systemPrompt: string, mensagens: Array<{role: string, content: string}>, provider?: string, maxTokens?: number, credencial?: {apiKey?: string, model?: string}}} opcoes
  * @returns {Promise<string>} texto da resposta
  */
 export async function chamarLLM({
   systemPrompt,
   mensagens = [],
-  provider = config.llm.defaultProvider,
+  provider = providerAtivo(),
   maxTokens = config.llm.maxTokens,
+  credencial = null,
 }) {
   if (!PROVIDERS_DISPONIVEIS.includes(provider)) {
     throw new Error(
@@ -24,8 +39,8 @@ export async function chamarLLM({
     )
   }
 
-  if (provider === 'claude') return chamarClaude({ systemPrompt, mensagens, maxTokens })
-  return chamarCompativelOpenAI({ systemPrompt, mensagens, maxTokens, provider })
+  if (provider === 'claude') return chamarClaude({ systemPrompt, mensagens, maxTokens, credencial })
+  return chamarCompativelOpenAI({ systemPrompt, mensagens, maxTokens, provider, credencial })
 }
 
 /**
@@ -35,12 +50,12 @@ export async function chamarLLM({
  * Não há terceiro degrau. A configuração comum do projeto tem constante de
  * fábrica no código; uma credencial não tem — e não deveria.
  */
-function credenciais(provider) {
+function credenciais(provider, rascunho = null) {
   const doArquivo = ler(provider)
   const doAmbiente = config.llm[provider]
 
-  const apiKey = doArquivo?.apiKey || doAmbiente.apiKey
-  const model = doArquivo?.model || doAmbiente.model
+  const apiKey = rascunho?.apiKey || doArquivo?.apiKey || doAmbiente.apiKey
+  const model = rascunho?.model || doArquivo?.model || doAmbiente.model
 
   if (!apiKey) {
     // Erro explícito de propósito: falhar em silêncio, ou cair noutro provedor
@@ -73,18 +88,28 @@ const VARIAVEIS = Object.freeze({
  * que importam (401 credencial, 429 cota, 5xx provedor fora).
  */
 function erroDeProvedor(provider, status) {
-  const pista =
-    status === 401 || status === 403
-      ? ' (falha ao autenticar — confira a credencial)'
-      : status === 429
-        ? ' (limite de uso ou cota)'
-        : ''
-  return new Error(`Provedor "${provider}" respondeu ${status}${pista}`)
+  return new Error(`Provedor "${provider}" respondeu ${status}${pistaDeStatus(status)}`)
+}
+
+/**
+ * Tradução do código de status para linguagem de operador.
+ *
+ * Exportada porque a transcrição precisa da mesma leitura, e duplicar a tabela
+ * faria uma das duas envelhecer sozinha. O 402 entrou depois de aparecer em
+ * produção: a chave autenticava e a conta estava sem saldo, e um "respondeu 402"
+ * pelado não diz isso a ninguém.
+ */
+export function pistaDeStatus(status) {
+  if (status === 401 || status === 403) return ' (falha ao autenticar — confira a credencial)'
+  if (status === 402) return ' (pagamento pendente ou saldo esgotado na conta do provedor)'
+  if (status === 429) return ' (limite de uso ou cota)'
+  if (status >= 500) return ' (o provedor está fora do ar)'
+  return ''
 }
 
 /** Anthropic Messages API: x-api-key + anthropic-version, system fora do array de mensagens. */
-async function chamarClaude({ systemPrompt, mensagens, maxTokens }) {
-  const { apiKey, model, baseUrl, version } = credenciais('claude')
+async function chamarClaude({ systemPrompt, mensagens, maxTokens, credencial = null }) {
+  const { apiKey, model, baseUrl, version } = credenciais('claude', credencial)
 
   const resposta = await fetch(baseUrl, {
     method: 'POST',
@@ -110,8 +135,8 @@ async function chamarClaude({ systemPrompt, mensagens, maxTokens }) {
  * OpenAI e DeepSeek compartilham o formato /chat/completions com Bearer.
  * Uma implementação só — a diferença entre eles é URL, chave e modelo.
  */
-async function chamarCompativelOpenAI({ systemPrompt, mensagens, maxTokens, provider }) {
-  const { apiKey, model, baseUrl } = credenciais(provider)
+async function chamarCompativelOpenAI({ systemPrompt, mensagens, maxTokens, provider, credencial = null }) {
+  const { apiKey, model, baseUrl } = credenciais(provider, credencial)
 
   const resposta = await fetch(baseUrl, {
     method: 'POST',

@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { dirname, join } from 'node:path'
+import { modeloTranscricao } from './llm/chavesRepo.js'
 
 /**
  * Configuração única do app. Todo o resto lê daqui — nenhum módulo acessa
@@ -46,9 +47,30 @@ export const config = {
   },
 
   transcription: {
-    // Sempre OpenAI, independente de llm.defaultProvider.
+    // Sempre OpenAI, independente de llm.defaultProvider — e com a MESMA chave
+    // da seção OpenAI, que é a mesma conta desde o primeiro dia. O que a tela
+    // configura é só o modelo.
     apiKey: process.env.OPENAI_API_KEY || '',
-    model: process.env.TRANSCRIPTION_MODEL || 'gpt-4o-transcribe',
+
+    /** Padrão do ambiente/código. A leitura viva é `model`, logo abaixo. */
+    modelPadrao: process.env.TRANSCRIPTION_MODEL || 'gpt-4o-transcribe',
+
+    /**
+     * Modelo vigente: arquivo de credenciais primeiro, padrão depois — a mesma
+     * ordem de dois degraus da chave e do modelo de conversa.
+     *
+     * É getter, e não valor, porque o arquivo muda sem reinício: lido uma vez na
+     * subida, trocar o modelo pela tela não alcançaria este processo, e o
+     * operador veria na tela um valor que a transcrição não está usando.
+     *
+     * O import de `chavesRepo` fecha um ciclo com este arquivo (ele lê
+     * `config.llm.chavesPath`). É seguro porque nenhum dos dois lados toca no
+     * outro durante a avaliação do módulo — só dentro de função.
+     */
+    get model() {
+      return modeloTranscricao(this.modelPadrao)
+    },
+
     language: process.env.TRANSCRIPTION_LANGUAGE || 'pt',
     baseUrl: 'https://api.openai.com/v1/audio/transcriptions',
   },

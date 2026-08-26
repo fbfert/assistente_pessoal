@@ -44,43 +44,43 @@
 
 ## 6. Modelo por lista curada (item novo)
 
-- [ ] 6.1 Lista de modelos conhecidos por provedor, derivada dos padrões de
+- [x] 6.1 Lista de modelos conhecidos por provedor, derivada dos padrões de
       `src/config.js` — não redigitada no HTML da tela
-- [ ] 6.2 `<select>` com a lista mais campo de texto livre **sempre visível** ao lado;
+- [x] 6.2 `<select>` com a lista mais campo de texto livre **sempre visível** ao lado;
       preenchido, o campo livre vence
-- [ ] 6.3 Modelo gravado fora da lista aparece como o vigente, sem ser trocado por
+- [x] 6.3 Modelo gravado fora da lista aparece como o vigente, sem ser trocado por
       outro na exibição
-- [ ] 6.4 Sem JavaScript: nada de opção "outro" que revela campo
+- [x] 6.4 Sem JavaScript: nada de opção "outro" que revela campo
 
 ## 7. Botão de testar (item novo)
 
-- [ ] 7.1 `POST /credenciais/:provider/testar`, rota separada da de salvar, atrás da
+- [x] 7.1 `POST /credenciais/:provider/testar`, rota separada da de salvar, atrás da
       mesma autenticação
-- [ ] 7.2 Nunca escreve no arquivo — nem chave, nem modelo, nem provedor ativo
-- [ ] 7.3 Usa a chave do formulário quando houver, a gravada quando o campo vier
+- [x] 7.2 Nunca escreve no arquivo — nem chave, nem modelo, nem provedor ativo
+- [x] 7.3 Usa a chave do formulário quando houver, a gravada quando o campo vier
       vazio; mesma regra para o modelo
-- [ ] 7.4 Chamada mínima ("responda apenas 'ok'") com teto de tokens baixo
-- [ ] 7.5 Resultado renderizado no bloco daquele provedor: sucesso com a latência, ou
+- [x] 7.4 Chamada mínima ("responda apenas 'ok'") com teto de tokens baixo
+- [x] 7.5 Resultado renderizado no bloco daquele provedor: sucesso com a latência, ou
       a falha — sem a chave e sem o corpo bruto da resposta
-- [ ] 7.6 Botão ao lado do salvar, em cada seção
-- [ ] 7.7 Sem auditoria: o teste não muda nada
-- [ ] 7.8 O corpo do POST com a chave de rascunho não é logado em lugar nenhum
+- [x] 7.6 Botão ao lado do salvar, em cada seção
+- [x] 7.7 Sem auditoria: o teste não muda nada
+- [x] 7.8 O corpo do POST com a chave de rascunho não é logado em lugar nenhum
 
 ## 8. Provedor ativo e transcrição (itens novos)
 
-- [ ] 8.1 `chavesRepo`: `lerAtivo()` e `escreverAtivo(provider)` — chave `ativo` no
+- [x] 8.1 `chavesRepo`: `lerAtivo()` e `escreverAtivo(provider)` — chave `ativo` no
       topo do arquivo, fora do mapa de provedores
-- [ ] 8.2 `chavesRepo`: `transcriptionModel` na entrada do provedor `openai`, padrão
+- [x] 8.2 `chavesRepo`: `transcriptionModel` na entrada do provedor `openai`, padrão
       `gpt-4o-transcribe`
-- [ ] 8.3 `status('openai')` passa a devolver também o modelo de transcrição
-- [ ] 8.4 Router resolve o provedor padrão pelo arquivo antes de `LLM_PROVIDER`
-- [ ] 8.5 `config.transcription.model` resolve pelo arquivo antes de
+- [x] 8.3 `status('openai')` passa a devolver também o modelo de transcrição
+- [x] 8.4 Router resolve o provedor padrão pelo arquivo antes de `LLM_PROVIDER`
+- [x] 8.5 `config.transcription.model` resolve pelo arquivo antes de
       `TRANSCRIPTION_MODEL` — sem que nenhum outro módulo passe a ler `process.env`
-- [ ] 8.6 Tela: rádio único de provedor ativo, compartilhado pelas três seções
-- [ ] 8.7 Tela: segundo seletor de modelo só na seção OpenAI, com a nota de que usa a
+- [x] 8.6 Tela: rádio único de provedor ativo, compartilhado pelas três seções
+- [x] 8.7 Tela: segundo seletor de modelo só na seção OpenAI, com a nota de que usa a
       mesma chave e que a transcrição é sempre OpenAI
-- [ ] 8.8 Auditoria da troca de provedor ativo
-- [ ] 8.9 `src/transcription/transcribe.js`: parar de devolver o corpo bruto da
+- [x] 8.8 Auditoria da troca de provedor ativo
+- [x] 8.9 `src/transcription/transcribe.js`: parar de devolver o corpo bruto da
       resposta de erro — só provedor e código de status
 - [x] 8.10 Revisar o delta `llm-provider` de `admin-backend-fase2`, que ainda dizia
       que o provedor ativo vem da configuração viva (decisão (f) do design) — o
@@ -88,17 +88,17 @@
 
 ## 9. Testes dos itens novos
 
-- [ ] 9.1 Campo livre prevalece sobre a opção selecionada
-- [ ] 9.2 Modelo gravado fora da lista aparece como vigente na tela
-- [ ] 9.3 Rota de teste usa o rascunho quando fornecido
-- [ ] 9.4 Rota de teste usa a chave salva quando o campo vem vazio
-- [ ] 9.5 Rota de teste não altera o arquivo (compara o conteúdo antes e depois)
-- [ ] 9.6 Falha no teste não expõe a chave nem o corpo da resposta
-- [ ] 9.7 Modelo de transcrição lido do registro da OpenAI, com fallback para o
+- [x] 9.1 Campo livre prevalece sobre a opção selecionada
+- [x] 9.2 Modelo gravado fora da lista aparece como vigente na tela
+- [x] 9.3 Rota de teste usa o rascunho quando fornecido
+- [x] 9.4 Rota de teste usa a chave salva quando o campo vem vazio
+- [x] 9.5 Rota de teste não altera o arquivo (compara o conteúdo antes e depois)
+- [x] 9.6 Falha no teste não expõe a chave nem o corpo da resposta
+- [x] 9.7 Modelo de transcrição lido do registro da OpenAI, com fallback para o
       ambiente
-- [ ] 9.8 Troca de provedor ativo pelo arquivo vale sem reinício
-- [ ] 9.9 Erro de transcrição não carrega o corpo da resposta
-- [ ] 9.10 Nenhum teste imprime uma chave em texto claro
+- [x] 9.8 Troca de provedor ativo pelo arquivo vale sem reinício
+- [x] 9.9 Erro de transcrição não carrega o corpo da resposta
+- [x] 9.10 Nenhum teste imprime uma chave em texto claro
 
 ## 10. Fechamento
 

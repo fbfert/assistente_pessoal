@@ -1,10 +1,12 @@
 import { config } from '../config.js'
+import { pistaDeStatus } from '../llm/router.js'
 
 /**
  * Transcreve áudio recebido no WhatsApp via API da OpenAI.
  *
- * Usa sempre a OpenAI, independente de LLM_PROVIDER — a transcrição não é
- * trocável por provedor no MVP.
+ * Usa sempre a OpenAI, independente do provedor ativo na conversa — a
+ * transcrição não é trocável por provedor no MVP. O modelo, sim: vem do arquivo
+ * de credenciais e cai no ambiente, resolvido por `config.transcription.model`.
  *
  * Erro de rede ou de API NÃO lança: devolve `{ ok: false, erro }` para que o
  * handler registre em log e siga. Derrubar a conversa por causa de um áudio
@@ -33,7 +35,10 @@ export async function transcreverAudio(audioBuffer, mimeType = 'audio/ogg') {
     })
 
     if (!resposta.ok) {
-      return { ok: false, erro: `OpenAI respondeu ${resposta.status}: ${await resposta.text()}` }
+      // O corpo é DESCARTADO, não filtrado: alguns provedores ecoam a credencial
+      // recebida no 401, e este texto vai para o console.error do handler, que é
+      // o log do Docker. Mesma decisão do router — errar uma vez basta para vazar.
+      return { ok: false, erro: `OpenAI respondeu ${resposta.status}${pistaDeStatus(resposta.status)}` }
     }
 
     const corpo = await resposta.json()
