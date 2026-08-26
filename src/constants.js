@@ -70,6 +70,18 @@ export const TIPOS_INTERACAO = Object.freeze({
    * auditoria existe para manter.
    */
   ENTRADA_WEB: 'entrada_web',
+  /**
+   * Mensagem que o SISTEMA enviou numa conversa — pergunta de anamnese ou
+   * resposta de chat livre.
+   *
+   * Sem isto, metade da conversa não existia: só a mensagem recebida era
+   * gravada, e não havia como auditar o que o assistente respondeu. Num piloto
+   * que existe para avaliar a qualidade do que ele diz, faltava o lado que
+   * importa.
+   *
+   * Disparo de gatilho NÃO entra aqui — `gatilho_disparado` já registra o texto.
+   */
+  MENSAGEM_ENVIADA: 'mensagem_enviada',
 })
 
 /** Horários padrão dos gatilhos criados ao concluir a anamnese. */

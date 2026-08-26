@@ -1,11 +1,11 @@
 import { config } from '../config.js'
-import { CANAIS, TIPOS_INTERACAO } from '../constants.js'
+import { CANAIS, SEM_INFORMACAO, TIPOS_INTERACAO } from '../constants.js'
 import * as repo from '../db/userRepo.js'
 import { registrar, ultimoGatilhoDisparado } from '../db/interactionLog.js'
 import { ESTADOS } from '../anamnese/questions.js'
 import { processarResposta } from '../anamnese/stateMachine.js'
 import { aplicarPlano } from '../anamnese/aplicarPlano.js'
-import { extrairRemedios } from '../anamnese/extrairRemedios.js'
+import { extrairRemedios, temIndicioDeRemedio } from '../anamnese/extrairRemedios.js'
 import { classificarMensagem } from '../classify/heuristic.js'
 import { montarSystemPrompt } from '../llm/prompts.js'
 import { chamarLLM } from '../llm/router.js'
@@ -56,7 +56,19 @@ export async function processarMensagem({ usuario, texto, canal, responder }, de
     return passoDeAnamnese(usuario, texto, canal, responder, { extrair, db })
   }
 
-  return conversaLivre(usuario, texto, canal, responder, { chamar, db })
+  return conversaLivre(usuario, texto, canal, responder, { chamar, extrair, db })
+}
+
+/**
+ * Envia e REGISTRA — nesta ordem.
+ *
+ * Registrar antes produziria histórico de mensagem que nunca chegou; quando o
+ * envio falha, a ausência da linha é a informação correta. Sem isto, metade da
+ * conversa não existia em lugar nenhum.
+ */
+async function enviar(usuarioId, texto, canal, responder, db) {
+  await responder(texto)
+  registrar({ usuarioId, tipo: TIPOS_INTERACAO.MENSAGEM_ENVIADA, texto, canal }, db)
 }
 
 async function passoDeAnamnese(usuario, texto, canal, responder, { extrair, db }) {
@@ -65,7 +77,7 @@ async function passoDeAnamnese(usuario, texto, canal, responder, { extrair, db }
   const plano = await processarResposta(usuario, texto, { extrairRemedios: extrair })
   const { mensagens } = aplicarPlano(usuario.usuario_id, plano, db, canal)
 
-  for (const m of mensagens) await responder(m)
+  for (const m of mensagens) await enviar(usuario.usuario_id, m, canal, responder, db)
 
   return {
     acao: 'anamnese',
@@ -75,7 +87,7 @@ async function passoDeAnamnese(usuario, texto, canal, responder, { extrair, db }
   }
 }
 
-async function conversaLivre(usuario, texto, canal, responder, { chamar, db }) {
+async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair, db }) {
   const ultimoGatilho = ultimoGatilhoDisparado(usuario.usuario_id, db)
   const classe = classificarMensagem(new Date(), ultimoGatilho, config.respostaGatilhoJanelaMin)
   const gatilhoTipo = ultimoGatilho?.gatilho_relacionado ?? null
@@ -98,17 +110,77 @@ async function conversaLivre(usuario, texto, canal, responder, { chamar, db }) {
     repo.zerarSilencio(usuario.usuario_id, gatilhoTipo, db)
   }
 
-  const systemPrompt = montarSystemPrompt(usuario, repo.listarRemedios(usuario.usuario_id, db))
+  const remedios = repo.listarRemedios(usuario.usuario_id, db)
+  const systemPrompt = montarSystemPrompt(usuario, remedios)
 
-  let resposta
-  try {
-    resposta = await chamar({ systemPrompt, mensagens: [{ role: 'user', content: texto }] })
-  } catch (e) {
-    console.error('[conversa] falha na chamada de LLM:', e?.message ?? e)
-    return { acao: classe, respondeu: false }
+  // As duas chamadas de LLM saem JUNTAS. A extração só acontece quando o texto
+  // tem indício de medicação, então na maioria das mensagens a segunda promessa
+  // resolve na hora, sem custo nenhum.
+  const [respostaOuErro, gravados] = await Promise.all([
+    chamar({ systemPrompt, mensagens: [{ role: 'user', content: texto }] }).catch((e) => {
+      console.error('[conversa] falha na chamada de LLM:', e?.message ?? e)
+      return null
+    }),
+    gravarRemedioDitoNaConversa(usuario, texto, remedios, { extrair, db }),
+  ])
+
+  const resposta = respostaOuErro
+
+  if (resposta) await enviar(usuario.usuario_id, resposta, canal, responder, db)
+
+  // A confirmação é texto DETERMINÍSTICO, e não instrução ao modelo: a pessoa
+  // precisa saber o que foi gravado mesmo que o modelo tenha respondido outra
+  // coisa — ou não tenha respondido nada.
+  if (gravados.length) {
+    await enviar(usuario.usuario_id, textoDeConfirmacao(gravados), canal, responder, db)
   }
 
-  if (resposta) await responder(resposta)
+  return { acao: classe, respondeu: Boolean(resposta), remediosGravados: gravados.length }
+}
 
-  return { acao: classe, respondeu: Boolean(resposta) }
+/**
+ * Remédio dito na conversa livre.
+ *
+ * SÓ grava item que vier com horário: sem horário não existe gatilho, então
+ * gravar não mudaria nada e ainda criaria cadastro a partir de uma menção de
+ * passagem. Nome sem horário é descartado em silêncio — a pessoa não pediu nada.
+ *
+ * Falha aqui NUNCA impede a resposta: devolve lista vazia e a conversa segue.
+ *
+ * @returns {Promise<Array<{nome: string, horario: string, acao: string}>>}
+ */
+async function gravarRemedioDitoNaConversa(usuario, texto, remedios, { extrair, db }) {
+  if (!temIndicioDeRemedio(texto, remedios)) return []
+
+  let extraidos
+  try {
+    extraidos = await extrair(texto)
+  } catch (e) {
+    console.error('[conversa] falha ao extrair remédio:', e?.message ?? e)
+    return []
+  }
+
+  const gravados = []
+  for (const r of extraidos ?? []) {
+    const nome = String(r?.nome ?? '').trim()
+    const horario = String(r?.horario ?? '').trim()
+    if (!nome || nome === SEM_INFORMACAO) continue
+    if (!horario || horario === SEM_INFORMACAO) continue
+
+    try {
+      const { acao } = repo.registrarHorarioDeRemedio(usuario.usuario_id, nome, horario, db)
+      gravados.push({ nome, horario, acao })
+    } catch (e) {
+      console.error('[conversa] falha ao gravar remédio:', e?.message ?? e)
+    }
+  }
+
+  return gravados
+}
+
+function textoDeConfirmacao(gravados) {
+  const linhas = gravados.map((g) => `- ${g.nome} às ${g.horario}`).join('\n')
+  const lembrete = gravados.length === 1 ? 'esse horário' : 'esses horários'
+
+  return `Anotei aqui:\n${linhas}\n\nVou te lembrar ${lembrete}. Se algum estiver errado, me diz.`
 }

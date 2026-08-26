@@ -100,7 +100,8 @@ CREATE TABLE IF NOT EXISTS historico_interacoes (
                               CHECK (tipo IN ('gatilho_disparado', 'resposta_gatilho',
                                               'despejo_espontaneo', 'silencio',
                                               'correcao_reportada', 'anamnese',
-                                              'acao_admin', 'entrada_web')),
+                                              'acao_admin', 'entrada_web',
+                                              'mensagem_enviada')),
   timestamp           TEXT    NOT NULL,
   texto               TEXT,
   -- Tipo do gatilho a que esta linha se refere (disparo, resposta ou silêncio).

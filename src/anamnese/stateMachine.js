@@ -3,6 +3,7 @@ import { SEM_INFORMACAO, TIPOS_INTERACAO } from '../constants.js'
 import {
   ESTADOS,
   PERGUNTAS,
+  FRASES_DE_DUVIDA,
   PEDIDO_DE_EXEMPLO,
   TEXTO_CONSENTIMENTO,
   TEXTO_RECUSA_CONSENTIMENTO,
@@ -52,6 +53,15 @@ const VAGOS = new Set([
   'varias coisas', 'muita coisa', 'tudo', 'de tudo', 'coisas', 'nada demais',
   '-', '...', 'x',
 ])
+
+/**
+ * A pessoa perguntou de volta em vez de responder.
+ *
+ * Igualdade exata contra conjunto fechado, como todo o resto deste módulo.
+ * Gravar a dúvida como resposta põe a pergunta dela dentro do perfil — e o
+ * perfil vira system prompt de toda conversa seguinte.
+ */
+export const isDuvida = (texto) => FRASES_DE_DUVIDA.has(normalizar(texto))
 
 export const isAfirmativo = (texto) => AFIRMATIVOS.has(normalizar(texto))
 export const isNegativo = (texto) => NEGATIVOS.has(normalizar(texto))
@@ -161,6 +171,13 @@ function processarPerguntaSimples(usuario, texto, estado) {
     ])
   }
 
+  // Pergunta de volta: reformula em vez de gravar. Gasta a MESMA segunda chance
+  // da resposta vaga — duas dúvidas seguidas seguem em frente, porque travar a
+  // pessoa tentando arrancar qualidade perde a pessoa.
+  if (isDuvida(texto) && !jaPediuExemplo && pergunta.reformulacao) {
+    return plano([pergunta.reformulacao], [marcarExemploPedido()])
+  }
+
   if (isVago(texto) && !jaPediuExemplo) {
     // Uma única segunda chance. Não avança o estado.
     return plano([PEDIDO_DE_EXEMPLO], [marcarExemploPedido()])
@@ -177,6 +194,10 @@ function processarPerguntaSimples(usuario, texto, estado) {
 /** Estado 6: extração de remédio via LLM, sob a Regra 1b. */
 async function processarRemedio(usuario, texto, deps) {
   const proximo = ESTADOS.PESSOAS_CHAVE
+
+  if (isDuvida(texto) && !usuario?.anamnese_exemplo_pedido) {
+    return plano([PERGUNTAS[ESTADOS.REMEDIO].reformulacao], [marcarExemploPedido()])
+  }
 
   if (isPular(texto) || isNegativo(texto)) {
     return plano([perguntaDoEstado(proximo)], [irPara(proximo)])
@@ -272,5 +293,6 @@ export function montarResumoAnamnese(usuario, remedios = []) {
 - Eu nunca devo: ${campo(usuario?.nunca_fazer)}
 - Vou falar contigo no modo: ${campo(usuario?.personalidade)}
 
-Tá certo? Se tiver algo errado, me diz o que é.`
+Tá certo? Se tiver algo errado, me diz o que é — eu anoto e quem te convidou
+ajusta no cadastro. Eu mesmo não consigo corrigir isso daqui.`
 }

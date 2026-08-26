@@ -502,6 +502,24 @@ de mais pressão.
 informação é a string literal `sem informação`, nunca um chute. Remédio sem nome
 ou sem horário não vira gatilho — não há o que lembrar.
 
+**Remédio dito na conversa depois da anamnese é gravado** — mas só com horário.
+Quem escreve "considere 23 horas pro bup" tem o horário salvo, o lembrete criado, e
+recebe de volta exatamente o que foi gravado. Menção sem horário não grava nada: sem
+horário não existe lembrete, e cadastrar a partir de uma menção de passagem criaria
+remédio que ninguém pediu. Nome que já existe é atualizado, nunca duplicado.
+
+Isso existe porque na primeira sessão real do piloto a pessoa pediu isso três vezes e
+o sistema não gravou nada — a extração só rodava dentro da anamnese.
+
+**O histórico guarda os dois lados.** Toda mensagem que o sistema envia — pergunta de
+anamnese e resposta de chat livre — é registrada junto com o que a pessoa escreveu.
+Antes, só a mensagem recebida era gravada, e não havia como auditar o que o assistente
+tinha respondido.
+
+**Pergunta de volta não vira perfil.** Se a pessoa responde "como assim?", o sistema
+explica a pergunta de outro jeito em vez de gravar a dúvida como resposta — uma vez
+por pergunta; a segunda dúvida seguida é aceita como está, para não travar ninguém.
+
 ---
 
 ## O que ficou simplificado de propósito

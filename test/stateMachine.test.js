@@ -11,6 +11,7 @@ import {
   processarResposta,
   montarResumoAnamnese,
   isVago,
+  isDuvida,
   isAfirmativo,
   isNegativo,
   isPular,
@@ -357,5 +358,84 @@ describe('router de LLM (parsing puro)', () => {
   test('resposta malformada vira string vazia, não exceção', () => {
     assert.equal(extrairTextoClaude({}), '')
     assert.equal(extrairTextoOpenAI({}), '')
+  })
+})
+
+// =============================================================================
+// Pergunta de volta não é resposta.
+//
+// Caso real: na primeira sessão do piloto, "Como assim?" virou o valor de
+// pessoas-chave e passou a entrar no system prompt daquela pessoa como fato.
+// =============================================================================
+
+describe('dúvida é pergunta, não resposta', () => {
+  const emEstado = (estado, extra = {}) => ({
+    anamnese_estado: estado,
+    anamnese_exemplo_pedido: 0,
+    ...extra,
+  })
+
+  test('reconhece a dúvida por igualdade exata, e só ela', () => {
+    for (const frase of ['como assim', 'Como assim?', 'NÃO ENTENDI', 'explica melhor']) {
+      assert.equal(isDuvida(frase), true, frase)
+    }
+    // Frase que CONTÉM uma dúvida não é dúvida: é resposta com texto de verdade.
+    for (const frase of ['como assim eu travo em tudo', 'não entendi bem a rotina, mas de manhã rendo']) {
+      assert.equal(isDuvida(frase), false, frase)
+    }
+  })
+
+  test('o caso real: "Como assim?" não vira pessoas-chave', async () => {
+    const plano = await processarResposta(emEstado(ESTADOS.PESSOAS_CHAVE), 'Como assim?')
+
+    assert.ok(
+      !plano.acoes.some((a) => a.tipo === 'salvarCampo'),
+      'a dúvida não pode ser gravada como resposta',
+    )
+    assert.ok(!plano.acoes.some((a) => a.tipo === 'setEstado'), 'e o estado não avança')
+    assert.equal(plano.mensagens.length, 1)
+    assert.equal(plano.mensagens[0], PERGUNTAS[ESTADOS.PESSOAS_CHAVE].reformulacao)
+    assert.ok(plano.acoes.some((a) => a.tipo === 'marcarExemploPedido'))
+  })
+
+  test('a reformulação explica a pergunta de outro jeito', () => {
+    for (const [estado, pergunta] of Object.entries(PERGUNTAS)) {
+      assert.ok(pergunta.reformulacao, `estado ${estado} sem reformulação`)
+      assert.notEqual(pergunta.reformulacao, pergunta.texto, `estado ${estado} só repete`)
+      assert.ok(pergunta.reformulacao.length > 40, `estado ${estado} explica pouco`)
+    }
+  })
+
+  test('segunda dúvida seguida não trava a pessoa', async () => {
+    const plano = await processarResposta(
+      emEstado(ESTADOS.PESSOAS_CHAVE, { anamnese_exemplo_pedido: 1 }),
+      'como assim',
+    )
+
+    assert.ok(plano.acoes.some((a) => a.tipo === 'salvarCampo'), 'aceita como está')
+    assert.ok(plano.acoes.some((a) => a.tipo === 'setEstado'))
+  })
+
+  test('vale também no estado de remédio, que tem caminho próprio', async () => {
+    const plano = await processarResposta(emEstado(ESTADOS.REMEDIO), 'não entendi')
+
+    assert.deepEqual(plano.mensagens, [PERGUNTAS[ESTADOS.REMEDIO].reformulacao])
+    assert.ok(!plano.acoes.some((a) => a.tipo === 'setEstado'))
+  })
+
+  test('resposta de verdade continua sendo gravada', async () => {
+    const plano = await processarResposta(emEstado(ESTADOS.PESSOAS_CHAVE), 'minha irmã Bia')
+
+    const salvar = plano.acoes.find((a) => a.tipo === 'salvarCampo')
+    assert.equal(salvar.valor, 'minha irmã Bia')
+  })
+})
+
+describe('o resumo não promete conserto', () => {
+  test('a pergunta do resumo diz o que acontece com a correção', () => {
+    const texto = montarResumoAnamnese({ nome: 'Ana' }, [])
+
+    assert.match(texto, /anoto/i)
+    assert.match(texto, /não consigo corrigir/i)
   })
 })

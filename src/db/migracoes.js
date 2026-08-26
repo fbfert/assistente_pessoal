@@ -45,7 +45,7 @@ export function migrar(db) {
     aplicadas.push('historico_interacoes.canal')
   }
 
-  if (ampliarTiposDeInteracao(db)) aplicadas.push('historico_interacoes.tipo (+entrada_web)')
+  if (ampliarTiposDeInteracao(db)) aplicadas.push('historico_interacoes.tipo (+mensagem_enviada)')
 
   if (aplicadas.length) console.log(`[db] migrações aplicadas: ${aplicadas.join(', ')}`)
 
@@ -53,7 +53,7 @@ export function migrar(db) {
 }
 
 /**
- * Acrescenta `entrada_web` ao CHECK de `historico_interacoes.tipo`.
+ * Mantém o CHECK de `historico_interacoes.tipo` na lista atual.
  *
  * CHECK não se altera com `ALTER TABLE` no SQLite. O caminho é o do AGENTS.md §6:
  * dentro de uma transação e com as chaves estrangeiras DESLIGADAS, cria-se a
@@ -74,7 +74,9 @@ function ampliarTiposDeInteracao(db) {
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'historico_interacoes'")
     .get()?.sql
 
-  if (!definicao || definicao.includes('entrada_web')) return false
+  // O sentinela é sempre o valor MAIS NOVO da lista: um banco que já tem os
+  // anteriores mas não este ainda precisa da recriação.
+  if (!definicao || definicao.includes('mensagem_enviada')) return false
 
   const antes = db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
   const estavamLigadas = db.pragma('foreign_keys', { simple: true })
@@ -90,7 +92,8 @@ function ampliarTiposDeInteracao(db) {
                                       CHECK (tipo IN ('gatilho_disparado', 'resposta_gatilho',
                                                       'despejo_espontaneo', 'silencio',
                                                       'correcao_reportada', 'anamnese',
-                                                      'acao_admin', 'entrada_web')),
+                                                      'acao_admin', 'entrada_web',
+                                                      'mensagem_enviada')),
           timestamp           TEXT    NOT NULL,
           texto               TEXT,
           gatilho_relacionado TEXT,

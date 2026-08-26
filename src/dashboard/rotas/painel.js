@@ -121,21 +121,35 @@ function listasDeEsteira(usuarios) {
   return `<h2>Esteira</h2>${blocos.join('')}`
 }
 
+/**
+ * Correção reportada é a ÚNICA coisa deste painel que representa alguém
+ * esperando ação humana — a pessoa apontou um erro no próprio cadastro e o
+ * sistema, de propósito, não corrigiu sozinho.
+ *
+ * Por isso o destaque e o link direto: listada sem os dois, vira anotação que
+ * ninguém abre. Aconteceu na primeira sessão real do piloto.
+ */
 function listaCorrecoes(correcoes) {
   if (!correcoes.length) return ''
 
   const itens = correcoes
     .map(
       (c) =>
-        `<li><strong>${escapar(c.nome ?? c.numero_whatsapp)}</strong> (${escapar(
-          c.timestamp,
-        )}): ${escapar(c.texto)}</li>`,
+        `<li><a href="/usuarios/${c.usuario_id}"><strong>${escapar(
+          c.nome ?? c.numero_whatsapp,
+        )}</strong></a> <span class="nota">(${escapar(c.timestamp)})</span><br>${escapar(
+          c.texto,
+        )}</li>`,
     )
     .join('')
 
-  return `<h2>Correções reportadas</h2>
-<p class="nota">Correção de anamnese é aplicada à mão pelo operador, de propósito — ver design.md.</p>
-<ul>${itens}</ul>`
+  return `<h2>Correções reportadas <span class="nota">(${correcoes.length})</span></h2>
+<div class="aviso">
+  <p><strong>Alguém apontou um erro no próprio cadastro e está esperando.</strong>
+  O sistema não corrige sozinho, de propósito — quem corrige é você, na página do
+  participante. O bot já avisou a pessoa de que a correção foi só anotada.</p>
+  <ul>${itens}</ul>
+</div>`
 }
 
 export { esteira }

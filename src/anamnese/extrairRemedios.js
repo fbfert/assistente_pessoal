@@ -64,3 +64,45 @@ function textoOuSentinela(valor) {
   const t = valor.trim()
   return t === '' ? SEM_INFORMACAO : t
 }
+
+/**
+ * Há indício de medicação neste texto?
+ *
+ * PORTÃO, não decisão: serve só para escolher se vale gastar uma chamada de LLM
+ * na conversa livre. Quem decide o que é remédio continua sendo o extrator, com
+ * o prompt estrito e a Regra 1b. Por isso aqui é busca por palavra, e não a
+ * igualdade exata contra `Set` que a máquina de estados exige — lá o custo de
+ * errar é gravar no campo errado; aqui é uma chamada à toa.
+ *
+ * Errar para o lado de chamar é barato. Errar para o outro mantém exatamente o
+ * comportamento de antes: nada é gravado.
+ *
+ * @param {string} texto
+ * @param {Array<{nome: string}>} remediosConhecidos os já cadastrados da pessoa
+ */
+export function temIndicioDeRemedio(texto, remediosConhecidos = []) {
+  const t = normalizarTexto(texto)
+  if (!t) return false
+
+  const termos = [
+    ...TERMOS_DE_MEDICACAO,
+    // O nome que a pessoa já usa é o indício mais forte que existe para ela.
+    ...remediosConhecidos
+      .map((r) => normalizarTexto(r?.nome))
+      .filter((n) => n && n !== normalizarTexto(SEM_INFORMACAO) && n.length >= 3),
+  ]
+
+  return termos.some((termo) => new RegExp(`\\b${escapar(termo)}\\b`).test(t))
+}
+
+const TERMOS_DE_MEDICACAO = Object.freeze([
+  'remedio', 'remedios', 'medicamento', 'medicamentos', 'medicacao',
+  'comprimido', 'comprimidos', 'capsula', 'capsulas', 'pilula', 'pilulas',
+  'dose', 'doses', 'mg', 'ml', 'gotas',
+  'tomar', 'tomo', 'tomei', 'tomando',
+])
+
+const normalizarTexto = (v) =>
+  String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+
+const escapar = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

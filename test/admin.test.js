@@ -500,6 +500,29 @@ describe('convite: convidar × reiniciar são ações distintas', () => {
     assert.equal(repo.findById(u.usuario_id, db).anamnese_estado, 12, 'progresso preservado')
   })
 
+  test('correção reportada aparece em destaque, com link para o participante', async () => {
+    const u = participante('+5511900000039')
+    log.registrar(
+      {
+        usuarioId: u.usuario_id,
+        tipo: 'correcao_reportada',
+        texto: 'Pessoas chave eu perguntei como assim',
+      },
+      db,
+    )
+
+    const html = await (await get('/')).text()
+
+    assert.match(html, /Correções reportadas/)
+    assert.match(html, /esperando/i, 'precisa parecer pendência, não anotação')
+    assert.match(
+      html,
+      new RegExp(`<a href="/usuarios/${u.usuario_id}"`),
+      'sem link, ninguém abre',
+    )
+    assert.match(html, /Pessoas chave eu perguntei como assim/)
+  })
+
   test('a data de nascimento é corrigível pela página do participante', async () => {
     const u = participante('+5511900000035')
     assert.equal(repo.findById(u.usuario_id, db).data_nascimento, null, 'nasce sem data')

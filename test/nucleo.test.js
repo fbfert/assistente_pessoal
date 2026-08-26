@@ -11,7 +11,7 @@ import * as repo from '../src/db/userRepo.js'
 import { listarInteracoes } from '../src/db/interactionLog.js'
 import { processarMensagem } from '../src/conversa/nucleo.js'
 import { ESTADOS } from '../src/anamnese/questions.js'
-import { CANAIS, TIPOS_INTERACAO } from '../src/constants.js'
+import { CANAIS, SEM_INFORMACAO, TIPOS_INTERACAO } from '../src/constants.js'
 
 /**
  * O núcleo de conversa exercitado SEM NENHUM CANAL.
@@ -236,7 +236,7 @@ describe('migração de banco existente', () => {
     assert.deepEqual(aplicadas, [
       'usuarios.data_nascimento',
       'historico_interacoes.canal',
-      'historico_interacoes.tipo (+entrada_web)',
+      'historico_interacoes.tipo (+mensagem_enviada)',
     ])
     assert.equal(antigo.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n, 1)
 
@@ -274,5 +274,174 @@ describe('migração de banco existente', () => {
 
     antigo.close()
     rmSync(caminho, { force: true })
+  })
+})
+
+// =============================================================================
+// Os quatro defeitos da primeira sessão real do piloto (26/08).
+// =============================================================================
+
+describe('o histórico guarda os dois lados', () => {
+  test('a resposta do sistema fica registrada, com canal', async () => {
+    const u = participante()
+
+    await processar(u, 'oi')
+
+    const enviadas = listarInteracoes(u.usuario_id, db).filter(
+      (l) => l.tipo === TIPOS_INTERACAO.MENSAGEM_ENVIADA,
+    )
+    assert.equal(enviadas.length, 1)
+    assert.equal(enviadas[0].texto, 'resposta do modelo')
+    assert.equal(enviadas[0].canal, CANAIS.WEB)
+  })
+
+  test('a pergunta da anamnese também fica registrada', async () => {
+    const u = participante(ESTADOS.O_QUE_TRAVA)
+
+    await processar(u, 'começar as coisas')
+
+    const enviadas = listarInteracoes(u.usuario_id, db)
+      .filter((l) => l.tipo === TIPOS_INTERACAO.MENSAGEM_ENVIADA)
+      .map((l) => l.texto)
+    assert.equal(enviadas.length, 1)
+    assert.match(enviadas[0], /rotina/i, 'a pergunta seguinte foi registrada')
+  })
+
+  test('envio que falha não deixa registro', async () => {
+    const u = participante()
+    const responderQuebrado = async () => {
+      throw new Error('conexão caiu')
+    }
+
+    await assert.rejects(() =>
+      processarMensagem(
+        { usuario: u, texto: 'oi', canal: CANAIS.WHATSAPP, responder: responderQuebrado },
+        { db, chamar: llmFalso },
+      ),
+    )
+
+    const enviadas = listarInteracoes(u.usuario_id, db).filter(
+      (l) => l.tipo === TIPOS_INTERACAO.MENSAGEM_ENVIADA,
+    )
+    assert.equal(enviadas.length, 0, 'mensagem que não chegou não vira histórico')
+  })
+
+  test('os dois lados ficam na ordem', async () => {
+    const u = participante()
+
+    await processar(u, 'hoje foi pesado')
+
+    const tipos = listarInteracoes(u.usuario_id, db).map((l) => l.tipo)
+    assert.deepEqual(tipos, [TIPOS_INTERACAO.DESPEJO_ESPONTANEO, TIPOS_INTERACAO.MENSAGEM_ENVIADA])
+  })
+})
+
+describe('remédio dito na conversa livre', () => {
+  /** Extrator falso: devolve o que o teste mandar, sem rede. */
+  const extratorQueDevolve = (...itens) => async () => itens
+
+  test('horário explícito é gravado, com gatilho, e confirmado na resposta', async () => {
+    const u = participante()
+    repo.adicionarRemedio(u.usuario_id, 'Bup', SEM_INFORMACAO, db)
+
+    await processar(u, 'considere 23 horas pro bup', CANAIS.WEB, {
+      extrair: extratorQueDevolve({ nome: 'Bup', horario: '23:00' }),
+    })
+
+    const remedios = repo.listarRemedios(u.usuario_id, db)
+    assert.equal(remedios.length, 1, 'atualizou, não duplicou')
+    assert.equal(remedios[0].horario, '23:00')
+
+    const gatilho = repo
+      .listarGatilhosUsuario(u.usuario_id, db)
+      .find((g) => g.remedio_id === remedios[0].remedio_id)
+    assert.ok(gatilho, 'o lembrete que ela pediu passou a existir')
+    assert.equal(gatilho.horario, '23:00')
+    assert.equal(gatilho.ativo, 1)
+
+    const confirmacao = respostas.at(-1)
+    assert.match(confirmacao, /Anotei/)
+    assert.match(confirmacao, /Bup/)
+    assert.match(confirmacao, /23:00/)
+  })
+
+  test('a confirmação também entra no histórico', async () => {
+    const u = participante()
+
+    await processar(u, 'tomo rivotril às 22:00', CANAIS.WEB, {
+      extrair: extratorQueDevolve({ nome: 'Rivotril', horario: '22:00' }),
+    })
+
+    const enviadas = listarInteracoes(u.usuario_id, db)
+      .filter((l) => l.tipo === TIPOS_INTERACAO.MENSAGEM_ENVIADA)
+      .map((l) => l.texto)
+    assert.ok(enviadas.some((t) => /Anotei/.test(t) && /22:00/.test(t)))
+  })
+
+  test('menção sem horário não grava nada', async () => {
+    const u = participante()
+
+    await processar(u, 'tomei o remédio hoje de manhã', CANAIS.WEB, {
+      extrair: extratorQueDevolve({ nome: 'Bup', horario: SEM_INFORMACAO }),
+    })
+
+    assert.equal(repo.listarRemedios(u.usuario_id, db).length, 0)
+    assert.ok(!respostas.some((r) => /Anotei/.test(r)), 'e não promete o que não fez')
+  })
+
+  test('texto sem indício de remédio não chama o extrator', async () => {
+    const u = participante()
+    let chamou = false
+
+    await processar(u, 'me conte algo', CANAIS.WEB, {
+      extrair: async () => {
+        chamou = true
+        return []
+      },
+    })
+
+    assert.equal(chamou, false, 'não gasta chamada de LLM à toa')
+  })
+
+  test('falha do extrator não impede a resposta', async () => {
+    const u = participante()
+
+    const r = await processar(u, 'tomo bup às 8:00', CANAIS.WEB, {
+      extrair: async () => {
+        throw new Error('provedor fora')
+      },
+    })
+
+    assert.equal(r.respondeu, true)
+    assert.deepEqual(respostas, ['resposta do modelo'])
+    assert.equal(repo.listarRemedios(u.usuario_id, db).length, 0)
+  })
+
+  test('nome com grafia diferente atualiza o mesmo remédio', async () => {
+    const u = participante()
+    repo.adicionarRemedio(u.usuario_id, 'Bup', '08:00', db)
+
+    await processar(u, 'na verdade o BUP é às 23:00', CANAIS.WEB, {
+      extrair: extratorQueDevolve({ nome: 'BUP', horario: '23:00' }),
+    })
+
+    const remedios = repo.listarRemedios(u.usuario_id, db)
+    assert.equal(remedios.length, 1)
+    assert.equal(remedios[0].horario, '23:00')
+  })
+
+  test('durante a anamnese este caminho não roda', async () => {
+    const u = participante(ESTADOS.O_QUE_TRAVA)
+    let chamou = false
+
+    await processar(u, 'tomo bup às 23:00', CANAIS.WEB, {
+      extrair: async () => {
+        chamou = true
+        return [{ nome: 'Bup', horario: '23:00' }]
+      },
+    })
+
+    assert.equal(chamou, false, 'no estado 2 isso é resposta de anamnese, não remédio')
+    assert.equal(repo.listarRemedios(u.usuario_id, db).length, 0)
   })
 })

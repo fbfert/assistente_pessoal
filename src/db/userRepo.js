@@ -152,6 +152,51 @@ export function adicionarRemedio(usuarioId, nome, horario, db = getDb()) {
   return db.prepare('SELECT * FROM remedios WHERE remedio_id = ?').get(lastInsertRowid)
 }
 
+/**
+ * Grava o horário de um remédio dito na conversa livre.
+ *
+ * Nome que já existe tem o HORÁRIO ATUALIZADO; nome novo cria um remédio. Nos
+ * dois casos o gatilho é reconciliado: sem isso, a pessoa informaria o horário e
+ * continuaria sem lembrete — que é exatamente o defeito que abriu esta mudança.
+ *
+ * Comparação de nome por texto normalizado: "Bup" e "bup" são o mesmo remédio, e
+ * criar o segundo deixaria dois gatilhos disparando para a mesma coisa.
+ *
+ * @returns {{acao: 'atualizado'|'criado', remedio: object}}
+ */
+export function registrarHorarioDeRemedio(usuarioId, nome, horario, db = getDb()) {
+  const alvo = normalizarNome(nome)
+  const existente = listarRemedios(usuarioId, db).find((r) => normalizarNome(r.nome) === alvo)
+
+  if (existente) {
+    db.prepare('UPDATE remedios SET horario = ? WHERE remedio_id = ?').run(horario, existente.remedio_id)
+    reconciliarGatilhoDeRemedio(usuarioId, existente.remedio_id, horario, db)
+    return { acao: 'atualizado', remedio: buscarRemedio(existente.remedio_id, db) }
+  }
+
+  const novo = adicionarRemedio(usuarioId, nome, horario, db)
+  reconciliarGatilhoDeRemedio(usuarioId, novo.remedio_id, horario, db)
+  return { acao: 'criado', remedio: novo }
+}
+
+const normalizarNome = (v) =>
+  String(v ?? '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+/** Um gatilho por remédio: cria se não houver, ajusta o horário se houver. */
+function reconciliarGatilhoDeRemedio(usuarioId, remedioId, horario, db = getDb()) {
+  const atual = db
+    .prepare('SELECT * FROM gatilhos_configurados WHERE usuario_id = ? AND remedio_id = ?')
+    .get(usuarioId, remedioId)
+
+  if (atual) {
+    db.prepare('UPDATE gatilhos_configurados SET horario = ?, ativo = 1 WHERE gatilho_id = ?')
+      .run(horario, atual.gatilho_id)
+    return
+  }
+
+  configurarGatilho(usuarioId, TIPOS_GATILHO.REMEDIO, horario, 1, remedioId, db)
+}
+
 export function listarRemedios(usuarioId, db = getDb()) {
   return db.prepare('SELECT * FROM remedios WHERE usuario_id = ? ORDER BY remedio_id').all(usuarioId)
 }
