@@ -102,10 +102,10 @@
 
 ## 10. Fechamento
 
-- [ ] 10.1 README: configurar pela tela, `.env` continua valendo, que recriar o
+- [x] 10.1 README: configurar pela tela, `.env` continua valendo, que recriar o
       volume apaga as credenciais junto, e a seção sobre testar, escolher o provedor
       ativo e configurar o modelo de transcrição
-- [ ] 10.2 `.env.example`: comentário sobre a alternativa, sem remover as variáveis
-- [ ] 10.3 `openspec validate --all` e suíte inteira
-- [ ] 10.4 Verificar rodando no Docker, pelo domínio
-- [ ] 10.5 Sync, archive e commit local
+- [x] 10.2 `.env.example`: comentário sobre a alternativa, sem remover as variáveis
+- [x] 10.3 `openspec validate --all` e suíte inteira
+- [x] 10.4 Verificar rodando no Docker, pelo domínio
+- [x] 10.5 Sync, archive e commit local

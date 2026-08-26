@@ -238,7 +238,61 @@ com **ele**, não que alguém trocou de senha. Tecnicamente também não caberia
 | `/admins` | Contas da equipe e auditoria da equipe |
 | `/conta` | Trocar a própria senha |
 | `/conexao` | Estado do WhatsApp e QR |
+| `/credenciais` | Chave, modelo e provedor ativo de cada LLM, mais o modelo de transcrição |
 | `/login` | Entrada |
+
+### Credenciais de LLM: chave, modelo e provedor ativo
+
+Trocar a chave de um provedor **não exige mais SSH nem reinício**. Em
+`/credenciais` há uma seção por provedor (Claude, OpenAI, DeepSeek), e cada uma
+tem:
+
+- **Chave de API nova** — campo write-only. Ele abre **vazio** mesmo quando já
+  existe uma chave configurada; a tela mostra só os últimos quatro caracteres,
+  para você identificar qual está lá. Deixar vazio preserva a atual, o que
+  permite editar só o modelo sem redigitar a credencial.
+- **Modelo** — uma lista curta com o padrão do projeto e o que estiver gravado,
+  mais um campo de texto livre ao lado. **O campo livre vence a lista quando
+  preenchido.** A lista é atalho para o caso comum, nunca restrição: modelo novo
+  se digita no campo.
+- **Salvar** e **Testar**, lado a lado. Testar faz uma chamada real, mínima
+  ("responda apenas 'ok'"), e **não grava nada** — usa a chave digitada no
+  formulário se houver uma, ou a já salva se o campo estiver vazio. Use antes de
+  substituir uma chave que funciona: sobrescrever é irreversível.
+
+Acima das seções, um **seletor único de provedor ativo** na conversa. A troca
+vale na mensagem seguinte, sem reiniciar container nenhum.
+
+Na seção da OpenAI existe um segundo campo, **modelo de transcrição de áudio**.
+Ele usa a **mesma chave** da OpenAI logo acima — é a mesma conta desde o começo
+do projeto. A transcrição é **sempre OpenAI**, independentemente do provedor
+ativo escolhido para a conversa; o que a tela configura é só o modelo.
+
+**O `.env` continua funcionando exatamente como antes.** Ninguém é obrigado a
+migrar. A ordem é de dois degraus: vale o que estiver configurado na tela e, na
+falta, a variável de ambiente (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`DEEPSEEK_API_KEY`, `LLM_PROVIDER`, `TRANSCRIPTION_MODEL`). Faltando os dois, a
+chamada falha dizendo qual provedor e onde configurar — nunca em silêncio e
+nunca caindo em outro provedor por conta própria.
+
+**Onde isso fica gravado:** num arquivo dentro do volume `tars_data`
+(`/data/llm-chaves.json`, permissão `0600`), ao lado do banco e do pareamento do
+WhatsApp. Não no banco, de propósito — o banco é o que se copia em backup, o que
+se inspeciona quando algo dá errado, e o que tem "ver histórico" como
+funcionalidade. Credencial não pertence a esse ciclo.
+
+> **Recriar o volume apaga estas credenciais junto** com o banco e o pareamento
+> (ver *Recriar o banco*, abaixo). Não há backup delas em lugar nenhum, e a única
+> forma de recuperá-las é reconfigurar pela tela.
+
+**A chave nunca é devolvida.** Não existe caminho de leitura da credencial para
+a interface, e não existe "ver histórico" de credencial — guardar a anterior
+significaria manter, num lugar consultável, uma chave provavelmente revogada.
+Toda gravação é auditada em `auditoria_admin`, registrando **qual provedor mudou
+e quem mudou** — nunca o valor, nem antigo nem novo, nem mascarado.
+
+**Quem copiar o volume passa a copiar credenciais de terceiros junto.** Isso não
+era verdade antes desta funcionalidade e vale para snapshot de disco também.
 
 ### Saída do piloto: anonimizar, não excluir
 
@@ -286,6 +340,10 @@ docker compose up -d --build
 
 > **Isso apaga o pareamento do WhatsApp junto** (`/data/auth` vive no mesmo
 > volume). Você vai precisar escanear o QR de novo, presencialmente com o chip.
+>
+> **E apaga as credenciais de LLM** (`/data/llm-chaves.json`): chave, modelo,
+> provedor ativo e modelo de transcrição configurados pela tela. Só o que
+> estiver no `.env` sobrevive. Reconfigure em `/credenciais` depois de subir.
 
 Se já houver dado real, o caminho é outro: SQLite não altera CHECK constraint com
 `ALTER TABLE`. A migração segura é, dentro de uma transação e com
