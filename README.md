@@ -313,6 +313,95 @@ O projeto não usa JavaScript de cliente, então não há `confirm()` do navegad
 Ação destrutiva passa por uma página intermediária que descreve o efeito antes
 do POST. Abrir essa página não altera nada.
 
+## O canal web (segundo canal, reativo)
+
+Além do WhatsApp, existe uma página de conversa em navegador. Ela roda **no mesmo
+processo do bot** (`tars`), não no dashboard: acesso direto ao banco e ao mesmo
+núcleo de conversa, sem API entre containers.
+
+### Para quem é
+
+- Quem trabalha em máquina onde o WhatsApp Web é bloqueado.
+- Quem separa a vida pessoal do aparelho de trabalho, ou não quer um assistente de
+  saúde no mesmo lugar em que a família manda mensagem.
+- E o motivo que vale para todo mundo: `@whiskeysockets/baileys` é biblioteca
+  **não-oficial**. Se a sessão cair ou o número for bloqueado, o piloto não para.
+
+Não substitui o WhatsApp. É o mesmo participante, a mesma anamnese, o mesmo
+histórico — outro transporte.
+
+### O que este canal NÃO faz
+
+**Ele nunca escreve primeiro.** Sem check-in da manhã, sem lembrete de remédio, sem
+checklist de fim de dia, sem cobrança de silêncio. Só responde quando a pessoa
+escreve.
+
+Isso é decisão de produto, não pendência: o mecanismo central do TARS é **chegar
+antes**, e nenhuma entrega por navegador tem a garantia que um lembrete de remédio
+precisa ter — depende de permissão que este público costuma negar, falha em silêncio
+com a aba fechada e se comporta diferente em cada navegador.
+
+A divisão, em uma frase: **a web é onde a pessoa procura o TARS; o WhatsApp é onde o
+TARS procura a pessoa.** Todo gatilho continua saindo pelo WhatsApp, inclusive para
+quem só conversa pela web.
+
+### Como pré-cadastrar alguém
+
+O convite é o **ponto único de cadastro**, para os dois canais. No painel, o
+formulário *Convidar piloto novo* pede duas coisas:
+
+| Campo | Para quê |
+|---|---|
+| Número de WhatsApp | Identifica a pessoa e recebe o texto de consentimento |
+| Data de nascimento | Segundo fator da entrada pelo canal web |
+
+Pela linha de comando é o mesmo cadastro:
+
+```bash
+docker compose exec tars node scripts/convidar-piloto.js +5511999999999 1990-04-23
+```
+
+**Quem foi convidado antes desta funcionalidade não tem data cadastrada** e, por isso,
+não entra pela web. A página do participante avisa e deixa corrigir — nenhum valor é
+inventado por padrão.
+
+### O link que a pessoa usa
+
+O servidor escuta na porta do canal web (`WEB_PORT`, padrão `3400`), publicada **apenas
+no loopback do host**, como o admin. Alcançar de fora exige uma entrada no proxy
+reverso do Apache — que vive em `public_html/.htaccess`, **fora do Git**, e é decisão
+de quem opera.
+
+Para conferir localmente, com túnel SSH:
+
+```bash
+ssh -L 3400:localhost:3400 usuario@<ip-do-servidor>
+# depois, no navegador: http://localhost:3400
+```
+
+A pessoa entra com **telefone + data de nascimento** — os mesmos dados do
+pré-cadastro. Não há senha, não há cadastro pela página, e a rota **nunca cria
+participante**: quem não foi convidado não entra.
+
+### Como isso é protegido
+
+- **Resposta de erro sempre igual**, exista o telefone ou não. Distinguir
+  transformaria a rota num verificador de quem está no piloto — que é, por si só,
+  informação de saúde.
+- **5 tentativas em 15 minutos**, contadas por origem **e** por telefone, mais um
+  segundo de atraso a cada falha. A contagem por telefone é a que segura ataque
+  distribuído: o endereço chega por proxy e é forjável, o telefone não.
+- **Sessão de 6 horas de inatividade**, renovada a cada mensagem. O banco guarda só o
+  hash do token.
+- **Expirar a sessão não apaga nada.** A pessoa entra de novo com os mesmos dados e a
+  conversa continua de onde parou.
+- **A página não carrega nada de fora** — sem framework, sem CDN, sem build. Uma CSP
+  restrita ao próprio domínio faz o navegador recusar qualquer exceção.
+
+> **O par telefone + data de nascimento é deliberadamente fraco.** Foi escolhido para
+> não exigir senha de quem tem TDAH no primeiro contato. Se o piloto crescer, é a
+> primeira coisa a trocar.
+
 ## Recriar o banco (só com o banco vazio)
 
 As mudanças de schema do backend admin — coluna `pausado`, tipo `acao_admin` e a

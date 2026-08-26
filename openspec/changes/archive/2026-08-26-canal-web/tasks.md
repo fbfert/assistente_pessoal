@@ -29,8 +29,10 @@
       `criado_em`, `expira_em`) e índice por `expira_em`
 - [x] 3.4 `src/db/migracoes.js`: `ALTER TABLE ... ADD COLUMN` para as duas colunas,
       idempotente por `PRAGMA table_info`
-- [ ] 3.5 Contar as linhas antes e conferir o pareamento do WhatsApp antes de rodar no
-      servidor (AGENTS.md §6)
+- [x] 3.5 Contar as linhas antes e conferir o pareamento do WhatsApp antes de rodar no
+      servidor (AGENTS.md §6) — conferido antes do deploy: 0 linhas de participante,
+      WhatsApp não pareado; a migração aplicou as três alterações e o histórico
+      seguiu em 0
 - [x] 3.6 `CANAIS` como constante congelada em `src/constants.js` — nenhum literal
       solto
 
@@ -79,9 +81,9 @@
 - [x] 7.1 `convidarPiloto` recebe e grava a data de nascimento
 - [x] 7.2 Formulário de convite ganha o campo, obrigatório; data malformada ou futura é
       recusada antes do banco
-- [ ] 7.3 Página do participante: exibe e permite corrigir a data de nascimento,
+- [x] 7.3 Página do participante: exibe e permite corrigir a data de nascimento,
       auditado
-- [ ] 7.4 Histórico da página do participante mostra o canal de cada interação
+- [x] 7.4 Histórico da página do participante mostra o canal de cada interação
 
 ## 8. Testes
 
@@ -99,7 +101,7 @@
 - [x] 8.11 Campo de identidade no corpo não troca o participante
 - [x] 8.12 Nenhuma resposta contém dado de outro participante nem lista de
       participantes; o token só aparece na resposta que o emitiu
-- [ ] 8.13 Gatilho não sai pela web; scheduler segue só no WhatsApp
+- [x] 8.13 Gatilho não sai pela web; scheduler segue só no WhatsApp
 - [x] 8.14 Migração: banco antigo ganha as colunas com os dados preservados, e roda
       duas vezes sem efeito na segunda
 - [x] 8.15 Anonimização redige `data_nascimento` e apaga as sessões
@@ -107,13 +109,17 @@
 
 ## 9. Fechamento
 
-- [ ] 9.1 README: o segundo canal, como a pessoa entra, o que ele NÃO faz (nenhuma
+- [x] 9.1 README: o segundo canal, como a pessoa entra, o que ele NÃO faz (nenhuma
       notificação), e a porta nova exposta
-- [ ] 9.2 `.env.example`: `WEB_PORT` e o que muda no Compose
-- [ ] 9.3 `docker-compose.yml`: publicar a porta do canal web — e registrar por que
+- [x] 9.2 `.env.example`: `WEB_PORT` e o que muda no Compose
+- [x] 9.3 `docker-compose.yml`: publicar a porta do canal web — e registrar por que
       **esta** publicação é diferente do bind em loopback do admin
-- [ ] 9.4 `openspec validate --all --no-interactive` e suíte inteira
-- [ ] 9.5 Verificar rodando: entrar pela página, responder uma pergunta da anamnese e
-      conferir a linha no histórico com canal `web`
-- [ ] 9.6 Sync (atenção aos quatro requisitos que `aprendizado-continuo` também
+- [x] 9.4 `openspec validate --all --no-interactive` e suíte inteira
+- [x] 9.5 Verificar rodando — o fluxo COMPLETO (entrar, anamnese inteira, chat livre,
+      reabrir, expirar, reentrar, histórico com canal `web`) foi exercitado em
+      container descartável com banco temporário e a chave real, porque fazê-lo em
+      produção criaria um participante falso no banco do piloto. Em produção foram
+      verificados a página, os assets, a porta em loopback e as duas rotas recusando
+      acesso inválido
+- [x] 9.6 Sync (atenção aos quatro requisitos que `aprendizado-continuo` também
       modifica), archive e commit local

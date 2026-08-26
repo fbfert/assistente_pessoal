@@ -2,7 +2,7 @@ import { Router } from 'express'
 import * as repo from '../../db/userRepo.js'
 import { listarInteracoes } from '../../db/interactionLog.js'
 import { pagina, escapar, rotuloGatilho, estadoLegivel } from '../html.js'
-import { SEM_INFORMACAO, TIPOS_GATILHO } from '../../constants.js'
+import { SEM_INFORMACAO, TIPOS_GATILHO, TIPOS_INTERACAO } from '../../constants.js'
 import { PERSONALIDADES } from '../../llm/prompts.js'
 import { config } from '../../config.js'
 
@@ -47,6 +47,7 @@ export function renderizarDetalhe({ usuario, remedios, gatilhos, interacoes }) {
 </p>
 
 ${blocoConsentimento(usuario)}
+${blocoAcessoWeb(usuario)}
 ${blocoPersonalidade(usuario)}
 ${blocoAnamnese(usuario)}
 ${blocoRemedios(usuario, remedios)}
@@ -63,6 +64,32 @@ function blocoConsentimento(u) {
 <tr><th>Versão</th><td>${escapar(u.consentimento_versao) || SEM_INFORMACAO}</td></tr>
 <tr><th>Quando</th><td class="num">${escapar(u.consentimento_timestamp) || SEM_INFORMACAO}</td></tr>
 </table>`
+}
+
+/**
+ * Data de nascimento: segundo fator da entrada pelo canal web.
+ *
+ * Fica em bloco próprio, e não junto da anamnese, porque não é resposta de
+ * anamnese — é identificação. Quem foi convidado antes desta coluna existir tem
+ * o campo vazio e NÃO consegue entrar pela web até alguém preencher aqui.
+ */
+function blocoAcessoWeb(u) {
+  return `<h2>Acesso pelo canal web</h2>
+<p class="nota">A pessoa entra em <code>/web</code> com o número de WhatsApp e esta data.
+Sem ela, só o WhatsApp funciona. O canal web <strong>não</strong> manda nada por conta
+própria: gatilho, lembrete e check-in continuam saindo apenas pelo WhatsApp.</p>
+<form method="post" action="/usuarios/${u.usuario_id}/data-nascimento">
+  <label for="nascimento">Data de nascimento</label>
+  <input type="date" id="nascimento" name="data_nascimento"
+         value="${escapar(u.data_nascimento ?? '')}" required>
+  <button type="submit">Salvar</button>
+</form>
+${
+  u.data_nascimento
+    ? ''
+    : `<div class="aviso">Sem data cadastrada: este participante não consegue entrar pelo
+       canal web. Preencha aqui — nada é inventado por padrão.</div>`
+}`
 }
 
 /**
@@ -219,6 +246,7 @@ function blocoHistorico(interacoes) {
       (i) => `<tr>
       <td class="num">${escapar(i.timestamp)}</td>
       <td>${escapar(i.tipo)}</td>
+      <td>${escapar(canalLegivel(i))}</td>
       <td>${escapar(i.gatilho_relacionado ?? '')}</td>
       <td class="texto">${escapar(i.texto ?? '')}</td>
     </tr>`,
@@ -226,9 +254,22 @@ function blocoHistorico(interacoes) {
     .join('')
 
   return `<h2>Histórico <span class="nota">(${interacoes.length})</span></h2>
-<p class="nota">A conversa real da pessoa com o bot. É o dado mais sensível do sistema — está atrás do login por isso.</p>
+<p class="nota">A conversa real da pessoa com o bot, por qualquer canal. É o dado mais
+sensível do sistema — está atrás do login por isso.</p>
 <table class="historico">
-<thead><tr><th>Quando</th><th>Tipo</th><th>Gatilho</th><th>Texto</th></tr></thead>
+<thead><tr><th>Quando</th><th>Tipo</th><th>Canal</th><th>Gatilho</th><th>Texto</th></tr></thead>
 <tbody>${linhas}</tbody>
 </table>`
+}
+
+
+/**
+ * Ação do operador não veio de canal nenhum.
+ *
+ * A coluna é `NOT NULL` com padrão, então a linha carrega `whatsapp` no banco —
+ * valor que não significa nada aqui. Exibi-lo faria a tela afirmar que o
+ * operador escreveu pelo WhatsApp, que é falso. Decisão (i) do design.
+ */
+function canalLegivel(interacao) {
+  return interacao.tipo === TIPOS_INTERACAO.ACAO_ADMIN ? '—' : (interacao.canal ?? '')
 }

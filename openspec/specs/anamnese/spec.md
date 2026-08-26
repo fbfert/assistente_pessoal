@@ -22,6 +22,18 @@ A transição SHALL ser calculada por funções puras que não importam a camada
 o usuário atual, o texto da resposta e as dependências injetadas, e devolvem um plano de ação
 que o chamador aplica. Isso existe para permitir teste sem SQLite real.
 
+A máquina de estados SHALL ser independente de canal: o estado é do participante, não do
+transporte, e uma anamnese iniciada por um canal SHALL poder continuar por outro, do ponto
+em que parou.
+
+O texto das perguntas, do consentimento, do pedido de exemplo e da conclusão SHALL ter
+origem única, compartilhada por todos os canais. Nenhum canal SHALL manter cópia própria
+desses textos.
+
+Motivo registrado: duplicar o conteúdo por canal faria a correção de uma pergunta valer só
+para quem estivesse do lado corrigido — e o participante não tem como saber que existem duas
+versões.
+
 #### Scenario: Avanço normal de estado
 - **WHEN** o usuário no estado 2 (O_QUE_TRAVA) responde com um texto concreto
 - **THEN** a resposta é gravada no campo `o_que_trava` e o estado passa a 3 (ROTINA)
@@ -29,6 +41,10 @@ que o chamador aplica. Isso existe para permitir teste sem SQLite real.
 #### Scenario: Uma pergunta por mensagem
 - **WHEN** a máquina de estados processa qualquer resposta
 - **THEN** o plano de ação devolvido contém no máximo uma pergunta ao usuário
+
+#### Scenario: Anamnese continua no outro canal
+- **WHEN** um participante responde até o estado 4 por um canal e escreve pelo outro
+- **THEN** recebe a pergunta do estado 5, sem repetir nenhuma anterior
 
 ### Requirement: Consentimento formal registrado
 

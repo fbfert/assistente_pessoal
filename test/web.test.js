@@ -440,3 +440,48 @@ describe('página pública', () => {
     }
   })
 })
+
+describe('o canal web é só reativo', () => {
+  test('nenhuma rota do canal web dispara gatilho, e o scheduler não o conhece', async () => {
+    const { readFileSync } = await import('node:fs')
+
+    // Sem comentários: os dois arquivos EXPLICAM a fronteira, e a explicação não
+    // pode fazer o teste falhar.
+    const semComentario = (caminho) =>
+      readFileSync(new URL(caminho, import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '')
+
+    const servidor = semComentario('../src/web/servidor.js')
+    const scheduler = semComentario('../src/triggers/scheduler.js')
+
+    // O canal web não sabe o que é gatilho: não agenda, não dispara, não lembra.
+    for (const proibido of ['scheduler', 'gatilho', 'cron', 'GATILHO_DISPARADO']) {
+      assert.ok(!servidor.includes(proibido), `o canal web não pode conhecer "${proibido}"`)
+    }
+
+    // E o scheduler não sabe o que é web: continua entregando pelo WhatsApp.
+    for (const proibido of ["'web'", 'CANAIS.WEB', 'sessoes_web']) {
+      assert.ok(!scheduler.includes(proibido), `o scheduler não pode alcançar a web: "${proibido}"`)
+    }
+  })
+
+  test('participante que só usa a web continua com gatilho de WhatsApp', async () => {
+    const u = await convidado()
+    repo.setAnamneseEstado(u.usuario_id, ESTADOS.CONCLUIDO, db)
+    repo.ativarGatilhosPadrao(u.usuario_id, db)
+
+    const { token } = await (await entrar({ telefone: TELEFONE, dataNascimento: NASCIMENTO })).json()
+    await mandar(token, { texto: 'oi' })
+
+    const gatilhos = repo.listarGatilhosUsuario(u.usuario_id, db)
+    assert.ok(gatilhos.length > 0, 'os gatilhos continuam existindo')
+
+    // Nada que o canal web faça cria disparo: quem dispara é o scheduler, e ele
+    // só fala WhatsApp.
+    const disparos = listarInteracoes(u.usuario_id, db).filter(
+      (l) => l.tipo === TIPOS_INTERACAO.GATILHO_DISPARADO,
+    )
+    assert.equal(disparos.length, 0)
+  })
+})

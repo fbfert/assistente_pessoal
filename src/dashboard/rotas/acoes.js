@@ -43,7 +43,7 @@ const naoEnviaDaqui = async () => {}
  * `new Date('2026-02-31')` não lança — vira 3 de março. Comparar a data
  * reconstruída com a informada é o que pega dia inexistente.
  */
-function dataDeNascimentoValida(valor) {
+export function dataDeNascimentoValida(valor) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false
 
   const d = new Date(`${valor}T00:00:00Z`)
@@ -131,6 +131,42 @@ rotasAcoes.post('/usuarios/:id/campo', (req, res) => {
   auditar(req, 
     usuario.usuario_id,
     `campo ${campo} alterado de "${anterior ?? SEM_INFORMACAO}" para "${valor}" via admin`,
+  )
+  voltar(res, usuario.usuario_id)
+})
+
+// --- Data de nascimento -------------------------------------------------------------
+
+/**
+ * Corrigir a data de quem foi cadastrado antes da coluna existir.
+ *
+ * Sem este caminho, a única saída para quem tem o campo vazio seria SQL manual —
+ * que é exatamente o que o admin existe para eliminar. E sem a data a pessoa não
+ * entra pelo canal web.
+ */
+rotasAcoes.post('/usuarios/:id/data-nascimento', (req, res) => {
+  const usuario = repo.findById(req.params.id)
+  if (!usuario) return res.status(404).send('não encontrado')
+
+  const valor = String(req.body?.data_nascimento ?? '').trim()
+
+  if (!dataDeNascimentoValida(valor)) {
+    return res.status(400).type('html').send(
+      pagina('Data inválida', `<h1>Data de nascimento inválida</h1>
+        <p>Use o formato <code>AAAA-MM-DD</code>, com uma data que exista e não esteja
+        no futuro. Nada foi alterado.</p>
+        <p><a href="/usuarios/${usuario.usuario_id}">voltar</a></p>`),
+    )
+  }
+
+  const anterior = usuario.data_nascimento
+  if (valor === anterior) return voltar(res, usuario.usuario_id)
+
+  repo.salvarDataNascimento(usuario.usuario_id, valor)
+  auditar(
+    req,
+    usuario.usuario_id,
+    `data de nascimento alterada de "${anterior ?? SEM_INFORMACAO}" para "${valor}" via admin`,
   )
   voltar(res, usuario.usuario_id)
 })

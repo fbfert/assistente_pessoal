@@ -8,8 +8,20 @@ services:
     environment:
       DB_PATH: /data/tars.sqlite
       WHATSAPP_AUTH_DIR: /data/auth
+      # Escuta em todas as interfaces DO CONTAINER, como o dashboard. Quem
+      # restringe ao loopback é o bind da publicação abaixo.
+      WEB_HOST: 0.0.0.0
     volumes:
       - tars_data:/data
+    ports:
+      # O canal web é a PRIMEIRA superfície pública deste projeto, e mesmo assim
+      # a publicação é em loopback — igual à do admin, e pelo mesmo motivo: quem
+      # decide o que vira público é o proxy reverso do Apache, fora deste
+      # repositório. A diferença entre os dois não está aqui: está lá.
+      #
+      # Trocar por "3400:3400" abre a conversa de gente em sobrecarga para a
+      # internet inteira, sem TLS e sem log de acesso. NÃO faça isso.
+      - "127.0.0.1:3400:3400"
     # Terminal interativo para o QR de pareamento ficar legível em:
     #   docker compose logs -f tars
     stdin_open: true

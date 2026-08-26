@@ -500,6 +500,58 @@ describe('convite: convidar × reiniciar são ações distintas', () => {
     assert.equal(repo.findById(u.usuario_id, db).anamnese_estado, 12, 'progresso preservado')
   })
 
+  test('a data de nascimento é corrigível pela página do participante', async () => {
+    const u = participante('+5511900000035')
+    assert.equal(repo.findById(u.usuario_id, db).data_nascimento, null, 'nasce sem data')
+
+    const r = await post(`/usuarios/${u.usuario_id}/data-nascimento`, {
+      data_nascimento: '1988-07-15',
+    })
+
+    assert.equal(r.status, 302)
+    assert.equal(repo.findById(u.usuario_id, db).data_nascimento, '1988-07-15')
+    assert.match(auditorias(u.usuario_id).at(-1).texto, /data de nascimento/)
+  })
+
+  test('data inválida na correção é recusada, sem alterar nada', async () => {
+    const u = participante('+5511900000036')
+    repo.salvarDataNascimento(u.usuario_id, '1988-07-15', db)
+
+    const r = await post(`/usuarios/${u.usuario_id}/data-nascimento`, {
+      data_nascimento: '2099-01-01',
+    })
+
+    assert.equal(r.status, 400)
+    assert.equal(repo.findById(u.usuario_id, db).data_nascimento, '1988-07-15')
+  })
+
+  test('a página mostra o canal de cada interação, e nenhum para ação de admin', async () => {
+    const u = participante('+5511900000037')
+    log.registrar(
+      { usuarioId: u.usuario_id, tipo: 'despejo_espontaneo', texto: 'oi pela web', canal: 'web' },
+      db,
+    )
+    await post(`/usuarios/${u.usuario_id}/pausa`, { pausado: '1' }) // gera acao_admin
+
+    const html = await (await get(`/usuarios/${u.usuario_id}`)).text()
+
+    assert.match(html, /<th>Canal<\/th>/)
+    assert.match(html, /<td>web<\/td>/)
+    // A linha de acao_admin carrega 'whatsapp' no banco por ser NOT NULL, e a
+    // tela não pode afirmar que o operador escreveu pelo WhatsApp.
+    const linhaAdmin = html.split('<tr>').find((l) => l.includes('acao_admin'))
+    assert.ok(linhaAdmin.includes('<td>—</td>'), 'ação de admin não exibe canal')
+  })
+
+  test('participante sem data de nascimento é avisado na página', async () => {
+    const u = participante('+5511900000038')
+
+    const html = await (await get(`/usuarios/${u.usuario_id}`)).text()
+
+    assert.match(html, /Sem data cadastrada/)
+    assert.match(html, /não consegue entrar pelo\s+canal web/)
+  })
+
   test('reenviar convite bloqueado para quem tem progresso', async () => {
     const u = participante('+5511900000032')
 
