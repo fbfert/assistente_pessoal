@@ -1,5 +1,30 @@
 ## MODIFIED Requirements
 
+### Requirement: Roteamento por provedor
+
+O sistema SHALL expor uma função única de chamada de LLM que recebe system prompt, mensagens e,
+opcionalmente, o provedor, e despacha para a implementação correspondente.
+
+O provedor padrão SHALL ser resolvido consultando primeiro as credenciais configuradas e, na
+ausência delas, a variável de ambiente. SHALL continuar podendo ser sobrescrito por chamada.
+
+O sistema SHALL exportar a lista de provedores disponíveis.
+
+Uma troca de provedor padrão pela interface SHALL valer sem reinício de processo.
+
+#### Scenario: Troca de provedor sem tocar em código
+- **WHEN** a variável de ambiente de provedor muda de `claude` para `deepseek` e o processo
+  reinicia
+- **THEN** as chamadas passam a ir para DeepSeek sem nenhuma alteração de código
+
+#### Scenario: Troca pela interface vale sem reinício
+- **WHEN** o provedor ativo é trocado pela tela de credenciais
+- **THEN** a próxima chamada vai para o provedor novo, sem reinício
+
+#### Scenario: Sobrescrita por chamada
+- **WHEN** uma chamada informa explicitamente um provedor diferente do padrão
+- **THEN** essa chamada usa o provedor informado
+
 ### Requirement: Contratos de API por provedor
 
 A chamada a Claude SHALL usar a Anthropic Messages API, autenticando por header
