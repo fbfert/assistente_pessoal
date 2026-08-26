@@ -233,7 +233,11 @@ describe('migração de banco existente', () => {
 
     const aplicadas = migrar(antigo)
 
-    assert.deepEqual(aplicadas, ['usuarios.data_nascimento', 'historico_interacoes.canal'])
+    assert.deepEqual(aplicadas, [
+      'usuarios.data_nascimento',
+      'historico_interacoes.canal',
+      'historico_interacoes.tipo (+entrada_web)',
+    ])
     assert.equal(antigo.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n, 1)
 
     const linha = antigo.prepare('SELECT * FROM historico_interacoes').get()

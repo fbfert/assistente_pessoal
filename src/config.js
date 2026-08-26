@@ -75,6 +75,33 @@ export const config = {
     baseUrl: 'https://api.openai.com/v1/audio/transcriptions',
   },
 
+  /**
+   * Canal web — servidor PÚBLICO, dentro do processo do bot.
+   *
+   * É a primeira porta deste projeto alcançável sem túnel: o admin sempre esteve
+   * em loopback. Por isso o servidor é separado do dele, em porta própria — uma
+   * rota mal configurada aqui não tem como alcançar dado administrativo.
+   */
+  web: {
+    port: num(process.env.WEB_PORT, 3400),
+    host: process.env.WEB_HOST || '127.0.0.1',
+
+    /** Inatividade até a sessão expirar. Renovada a cada requisição válida. */
+    sessaoHoras: num(process.env.WEB_SESSAO_HORAS, 6),
+
+    /** Limite de tentativas de entrada — por origem E por telefone. */
+    maxTentativas: num(process.env.WEB_MAX_TENTATIVAS, 5),
+    bloqueioMinutos: num(process.env.WEB_BLOQUEIO_MINUTOS, 15),
+
+    /**
+     * Atraso fixo a cada falha de entrada. É a defesa que NÃO se contorna, por
+     * não depender de identificar a origem — baixar isto em produção enfraquece
+     * o sistema de verdade. Configurável para que a suíte não gaste um segundo
+     * por tentativa testada.
+     */
+    atrasoFalhaMs: num(process.env.WEB_ATRASO_FALHA_MS, 1000),
+  },
+
   timezone: process.env.TZ || 'America/Sao_Paulo',
 
   db: {

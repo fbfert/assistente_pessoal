@@ -61,6 +61,15 @@ export const TIPOS_INTERACAO = Object.freeze({
   ANAMNESE: 'anamnese',
   /** Escrita feita pelo operador no backend admin. Rastro de auditoria. */
   ACAO_ADMIN: 'acao_admin',
+  /**
+   * Entrada da própria pessoa pelo canal web.
+   *
+   * Tipo próprio, e não `acao_admin`: aquele significa "o operador escreveu algo
+   * sobre esta pessoa", e usá-lo aqui faria a página do participante exibir o
+   * acesso dele como se fosse ação da equipe — justamente a distinção que a
+   * auditoria existe para manter.
+   */
+  ENTRADA_WEB: 'entrada_web',
 })
 
 /** Horários padrão dos gatilhos criados ao concluir a anamnese. */

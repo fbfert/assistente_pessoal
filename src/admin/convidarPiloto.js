@@ -17,13 +17,27 @@ import { ESTADOS, TEXTO_CONSENTIMENTO } from '../anamnese/questions.js'
  *
  * Idempotente: convidar o mesmo número duas vezes reaproveita o usuário.
  *
+ * A data de nascimento é o segundo fator da entrada pelo canal web. Chega aqui —
+ * e não numa tela separada — para que exista UM ponto de pré-cadastro: um segundo
+ * caminho, só para quem fosse usar a web, criaria um segundo conjunto de regras
+ * sobre quando o estado 0 começa.
+ *
+ * O parâmetro é opcional na função e OBRIGATÓRIO em quem a chama (a tela do admin
+ * e o CLI). Aqui ele é opcional porque participantes convidados antes desta
+ * coluna existirem continuam válidos — só não entram pela web até o operador
+ * preencher a data pela página de detalhe.
+ *
  * @param {string} numeroWhatsapp
  * @param {(numero: string, texto: string) => Promise<void>} enviarMensagem
+ * @param {object} [db]
+ * @param {string} [dataNascimento] AAAA-MM-DD
  */
-export async function convidarPiloto(numeroWhatsapp, enviarMensagem, db) {
+export async function convidarPiloto(numeroWhatsapp, enviarMensagem, db, dataNascimento = null) {
   const usuario = repo.findOrCreate(numeroWhatsapp, db)
 
   repo.setAnamneseEstado(usuario.usuario_id, ESTADOS.CONSENTIMENTO, db)
+
+  if (dataNascimento) repo.salvarDataNascimento(usuario.usuario_id, dataNascimento, db)
 
   await enviarMensagem(numeroWhatsapp, TEXTO_CONSENTIMENTO)
 

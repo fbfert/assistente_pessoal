@@ -45,7 +45,80 @@ export function migrar(db) {
     aplicadas.push('historico_interacoes.canal')
   }
 
+  if (ampliarTiposDeInteracao(db)) aplicadas.push('historico_interacoes.tipo (+entrada_web)')
+
   if (aplicadas.length) console.log(`[db] migrações aplicadas: ${aplicadas.join(', ')}`)
 
   return aplicadas
+}
+
+/**
+ * Acrescenta `entrada_web` ao CHECK de `historico_interacoes.tipo`.
+ *
+ * CHECK não se altera com `ALTER TABLE` no SQLite. O caminho é o do AGENTS.md §6:
+ * dentro de uma transação e com as chaves estrangeiras DESLIGADAS, cria-se a
+ * tabela nova com a constraint atualizada, copiam-se os dados, dropa-se a antiga
+ * e renomeia-se.
+ *
+ * O `foreign_keys = OFF` é essencial e vai FORA da transação — o SQLite ignora
+ * essa mudança dentro de uma. Sem ele, o `DROP` da tabela antiga dispararia o
+ * CASCADE sobre as filhas.
+ *
+ * As linhas são contadas antes e depois: divergência aborta em vez de seguir com
+ * um histórico incompleto, que é o tipo de perda que ninguém percebe na hora.
+ *
+ * @returns {boolean} true quando a migração rodou agora
+ */
+function ampliarTiposDeInteracao(db) {
+  const definicao = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'historico_interacoes'")
+    .get()?.sql
+
+  if (!definicao || definicao.includes('entrada_web')) return false
+
+  const antes = db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
+  const estavamLigadas = db.pragma('foreign_keys', { simple: true })
+
+  db.pragma('foreign_keys = OFF')
+  try {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE historico_interacoes_novo (
+          interacao_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+          usuario_id          INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+          tipo                TEXT    NOT NULL
+                                      CHECK (tipo IN ('gatilho_disparado', 'resposta_gatilho',
+                                                      'despejo_espontaneo', 'silencio',
+                                                      'correcao_reportada', 'anamnese',
+                                                      'acao_admin', 'entrada_web')),
+          timestamp           TEXT    NOT NULL,
+          texto               TEXT,
+          gatilho_relacionado TEXT,
+          canal               TEXT    NOT NULL DEFAULT 'whatsapp'
+                                      CHECK (canal IN ('whatsapp', 'web'))
+        );
+
+        INSERT INTO historico_interacoes_novo
+               (interacao_id, usuario_id, tipo, timestamp, texto, gatilho_relacionado, canal)
+        SELECT  interacao_id, usuario_id, tipo, timestamp, texto, gatilho_relacionado, canal
+          FROM  historico_interacoes;
+
+        DROP TABLE historico_interacoes;
+        ALTER TABLE historico_interacoes_novo RENAME TO historico_interacoes;
+
+        CREATE INDEX IF NOT EXISTS idx_historico_usuario_timestamp
+          ON historico_interacoes (usuario_id, timestamp);
+      `)
+
+      const depois = db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
+      if (depois !== antes) {
+        // Dentro da transação: lançar aqui desfaz tudo.
+        throw new Error(`migração perderia linhas: ${antes} antes, ${depois} depois`)
+      }
+    })()
+  } finally {
+    if (estavamLigadas) db.pragma('foreign_keys = ON')
+  }
+
+  return true
 }

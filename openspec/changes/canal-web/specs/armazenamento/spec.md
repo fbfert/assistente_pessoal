@@ -92,8 +92,18 @@ pela web até o operador preencher — o que é recusa de acesso, não perda de 
 ### Requirement: Histórico append-only
 
 `historico_interacoes` SHALL restringir `tipo` a `gatilho_disparado`,
-`resposta_gatilho`, `despejo_espontaneo`, `silencio`, `correcao_reportada`, `anamnese` e
-`acao_admin`.
+`resposta_gatilho`, `despejo_espontaneo`, `silencio`, `correcao_reportada`, `anamnese`,
+`acao_admin` e `entrada_web`.
+
+A ampliação dessa lista em banco já existente SHALL ser feita por migração que recria a
+tabela com a constraint atualizada, dentro de transação e com as chaves estrangeiras
+desligadas, conferindo a contagem de linhas antes e depois, e SHALL ser idempotente.
+
+`entrada_web` SHALL registrar acesso da própria pessoa, e SHALL NOT ser confundido com
+`acao_admin`, que registra escrita do operador sobre ela.
+
+Linhas cujo tipo não representa mensagem — como `acao_admin` — SHALL carregar o valor
+padrão de `canal`, e a interface SHALL NOT exibir canal para elas.
 
 `historico_interacoes` SHALL ter a coluna `canal`, restrita a `whatsapp` e `web`, não
 nula, com padrão `whatsapp`.
@@ -123,6 +133,19 @@ coluna anulável obrigaria cada consulta a tratar o caso do nulo para sempre.
 #### Scenario: Canal desconhecido é rejeitado
 - **WHEN** uma escrita tenta gravar um canal fora dos valores permitidos
 - **THEN** o banco rejeita a escrita
+
+#### Scenario: Entrada pela web é um tipo válido
+- **WHEN** uma entrada pelo canal web é registrada
+- **THEN** o banco aceita o tipo `entrada_web`
+
+#### Scenario: Migração da lista de tipos preserva o histórico
+- **WHEN** a migração roda sobre um banco com interações já gravadas
+- **THEN** a contagem de linhas depois é idêntica à de antes, e o índice composto
+  continua existindo
+
+#### Scenario: Ação de admin não exibe canal
+- **WHEN** a página do participante mostra uma linha de `acao_admin`
+- **THEN** nenhum canal é exibido para ela
 
 ### Requirement: Anonimização de participante
 

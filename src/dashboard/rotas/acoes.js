@@ -37,13 +37,39 @@ const naoEnviaDaqui = async () => {}
 
 // --- Convite ------------------------------------------------------------------
 
+/**
+ * Data no formato AAAA-MM-DD, que existe e não está no futuro.
+ *
+ * `new Date('2026-02-31')` não lança — vira 3 de março. Comparar a data
+ * reconstruída com a informada é o que pega dia inexistente.
+ */
+function dataDeNascimentoValida(valor) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false
+
+  const d = new Date(`${valor}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return false
+  if (d.toISOString().slice(0, 10) !== valor) return false
+
+  return d.getTime() <= Date.now()
+}
+
 rotasAcoes.post('/convidar', async (req, res) => {
   const numero = String(req.body?.numero ?? '').trim()
+  const dataNascimento = String(req.body?.data_nascimento ?? '').trim()
 
   if (!/^\+?\d{10,15}$/.test(numero.replace(/[\s()-]/g, ''))) {
     return res.status(400).type('html').send(
       pagina('Número inválido', `<h1>Número inválido</h1>
         <p>“${escapar(numero)}” não parece um número de WhatsApp. Use <code>+5511999999999</code>.</p>
+        <p><a href="/">voltar</a></p>`),
+    )
+  }
+
+  if (!dataDeNascimentoValida(dataNascimento)) {
+    return res.status(400).type('html').send(
+      pagina('Data inválida', `<h1>Data de nascimento inválida</h1>
+        <p>Use o formato <code>AAAA-MM-DD</code>, com uma data que exista e não esteja
+        no futuro. Nada foi criado nem alterado.</p>
         <p><a href="/">voltar</a></p>`),
     )
   }
@@ -58,7 +84,7 @@ rotasAcoes.post('/convidar', async (req, res) => {
     )
   }
 
-  const usuario = await convidarPiloto(numero, naoEnviaDaqui)
+  const usuario = await convidarPiloto(numero, naoEnviaDaqui, undefined, dataNascimento)
   auditar(req, usuario.usuario_id, `participante ${numero} convidado via admin`)
   voltar(res, usuario.usuario_id)
 })

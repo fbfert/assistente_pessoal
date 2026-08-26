@@ -457,12 +457,28 @@ describe('convite: convidar × reiniciar são ações distintas', () => {
   })
 
   test('número novo é convidado', async () => {
-    await post('/convidar', { numero: '+5511900000030' })
+    await post('/convidar', { numero: '+5511900000030', data_nascimento: '1990-04-23' })
 
     const u = repo.findByWhatsapp('+5511900000030', db)
     assert.ok(u)
     assert.equal(u.anamnese_estado, 0)
+    assert.equal(u.data_nascimento, '1990-04-23', 'a data entra junto com o convite')
     assert.equal(auditorias(u.usuario_id).length, 1)
+  })
+
+  test('convite sem data de nascimento é recusado, sem criar nada', async () => {
+    const r = await post('/convidar', { numero: '+5511900000033' })
+
+    assert.equal(r.status, 400)
+    assert.equal(repo.findByWhatsapp('+5511900000033', db), null, 'nada foi criado')
+  })
+
+  test('data inexistente ou no futuro é recusada', async () => {
+    for (const data of ['2026-02-31', '2099-01-01', '23/04/1990']) {
+      const r = await post('/convidar', { numero: '+5511900000034', data_nascimento: data })
+      assert.equal(r.status, 400, `deveria recusar "${data}"`)
+    }
+    assert.equal(repo.findByWhatsapp('+5511900000034', db), null)
   })
 
   test('número inválido é recusado', async () => {
@@ -475,7 +491,10 @@ describe('convite: convidar × reiniciar são ações distintas', () => {
     // estado incondicionalmente e apagaria o progresso sem avisar.
     const u = participante('+5511900000031')
 
-    const r = await post('/convidar', { numero: u.numero_whatsapp })
+    const r = await post('/convidar', {
+      numero: u.numero_whatsapp,
+      data_nascimento: '1990-04-23',
+    })
 
     assert.equal(r.status, 409)
     assert.equal(repo.findById(u.usuario_id, db).anamnese_estado, 12, 'progresso preservado')

@@ -245,6 +245,43 @@ o computador) e misturaria credencial de acesso com dado de saúde na mesma linh
 Expirados são apagados de verdade — sessão não é rastro de auditoria, é credencial
 vencida. O que fica registrado no histórico é a **entrada**, não o token.
 
+**Validade: 6 horas de INATIVIDADE**, renovadas a cada requisição válida. O número
+não estava fixado quando esta decisão foi tomada e fica registrado aqui.
+
+Inatividade, e não tempo absoluto desde a entrada: uma conversa que dura o dia todo não
+deve ser interrompida no meio, e uma aba esquecida aberta não deve valer para sempre.
+Seis horas cobrem um turno de uso — quem conversa de manhã e volta à noite entra de
+novo uma vez, o que é aceitável; quem está no meio da anamnese não é interrompido.
+
+Menos que isso obrigaria a redigitar telefone e data com frequência, num público em que
+cada atrito custa a próxima mensagem. Mais que isso deixaria uma credencial de acesso a
+dado de saúde viva num computador emprestado por tempo demais.
+
+**Expirar a sessão nunca apaga histórico.** A sessão é a chave da porta, não a conversa:
+quem reentra encontra a anamnese no mesmo estado e o histórico intacto.
+
+O hash do token é **SHA-256**, não `scrypt`. O `scrypt` de `src/dashboard/senha.js`
+existe para senha escolhida por gente — segredo de pouca entropia, onde o custo
+deliberado é o que inviabiliza dicionário. O token aqui é aleatório de 192 bits: não há
+dicionário a fazer, e pagar ~100 ms de derivação **em toda mensagem** seria latência
+inventada. O que se quer do hash é só que um banco vazado não contenha credencial
+utilizável, e SHA-256 entrega exatamente isso.
+
+### (i) Tipo da entrada no histórico, e o canal das linhas que não são mensagem
+
+**DECIDIDO: tipo novo `entrada_web`.** Reaproveitar `acao_admin` faria a página do
+participante exibir o acesso dele como se fosse ação da equipe — exatamente a distinção
+que a auditoria existe para manter. Custo assumido: o CHECK é lista fechada, então isso
+exige a migração completa de constraint. O banco de produção estava com zero linhas de
+participante quando esta decisão foi tomada — a janela mais barata que vai existir.
+
+**DECIDIDO: as linhas de `acao_admin` ficam com o `canal` padrão, e a interface não
+exibe canal para elas.** O valor existe no banco por ser `NOT NULL`, mas nunca é
+mostrado nem consultado para esse tipo. As alternativas eram acrescentar `admin` aos
+valores de canal (mais uma migração de CHECK para um valor que só serve de rótulo) ou
+tornar a coluna anulável (obrigando toda consulta futura a tratar o nulo, que é
+justamente o que a escolha por `NOT NULL` com padrão evitou).
+
 ### (c) → (h) JavaScript de cliente na página pública
 
 **DECIDIDO: sim, na página pública; a invariante continua valendo para o admin.**

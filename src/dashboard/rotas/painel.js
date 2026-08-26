@@ -49,6 +49,12 @@ function formularioConvite() {
   <form method="post" action="/convidar">
     <label for="numero">Número de WhatsApp</label>
     <input type="text" id="numero" name="numero" placeholder="+5511999999999" required>
+
+    <label for="data_nascimento">Data de nascimento</label>
+    <input type="date" id="data_nascimento" name="data_nascimento" required>
+    <p class="nota">É o segundo fator da entrada pelo canal web — sem ela a pessoa
+    entra pelo WhatsApp, mas não pelo navegador.</p>
+
     <p><button type="submit">Convidar</button></p>
   </form>
 </fieldset>`

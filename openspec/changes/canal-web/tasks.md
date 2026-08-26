@@ -36,34 +36,35 @@
 
 ## 4. Sessão web
 
-- [ ] 4.1 `src/db/sessaoWebRepo.js`: `criar(usuarioId)`, `validar(token)`,
+- [x] 4.1 `src/db/sessaoWebRepo.js`: `criar(usuarioId)`, `validar(token)`,
       `encerrar(token)`, `apagarExpiradas()`, `apagarDoUsuario(usuarioId)`
-- [ ] 4.2 `criar` devolve o token em claro UMA vez; o banco guarda só o hash
-- [ ] 4.3 Reaproveita o hash `scrypt` de `src/dashboard/senha.js` — sem dependência
-      nova
-- [ ] 4.4 `validar` recusa ausente, desconhecido e expirado, e apaga o expirado
-- [ ] 4.5 `userRepo.anonimizarParticipante` apaga as sessões e redige
+- [x] 4.2 `criar` devolve o token em claro UMA vez; o banco guarda só o hash
+- [x] 4.3 Hash SHA-256 do token (não `scrypt`): o segredo é aleatório de 192 bits,
+      não há dicionário a fazer, e a derivação lenta custaria latência em toda
+      mensagem — ver a decisão (b) no design
+- [x] 4.4 `validar` recusa ausente, desconhecido e expirado, e apaga o expirado
+- [x] 4.5 `userRepo.anonimizarParticipante` apaga as sessões e redige
       `data_nascimento`
 
 ## 5. Rotas do canal web
 
-- [ ] 5.1 `src/web/servidor.js`: Express próprio, porta própria
+- [x] 5.1 `src/web/servidor.js`: Express próprio, porta própria
       (`WEB_PORT`), montado a partir de `src/index.js`
-- [ ] 5.2 Falha de rota não derruba o processo: handler de erro explícito, e o
+- [x] 5.2 Falha de rota não derruba o processo: handler de erro explícito, e o
       `listen` não bloqueia a conexão do WhatsApp
-- [ ] 5.3 `POST /entrar`: telefone + data de nascimento → token
-- [ ] 5.4 Nunca cria participante; exige `anamnese_estado` existente e
+- [x] 5.3 `POST /entrar`: telefone + data de nascimento → token
+- [x] 5.4 Nunca cria participante; exige `anamnese_estado` existente e
       `data_nascimento` preenchida
-- [ ] 5.5 Resposta de falha idêntica nos três casos (telefone ausente, data errada,
+- [x] 5.5 Resposta de falha idêntica nos três casos (telefone ausente, data errada,
       sem data cadastrada)
-- [ ] 5.6 Limite: 5 falhas / 15 min por origem **e** por telefone, atraso de 1s por
+- [x] 5.6 Limite: 5 falhas / 15 min por origem **e** por telefone, atraso de 1s por
       falha, sucesso zera as duas contagens
-- [ ] 5.7 Entrada bem-sucedida registra interação; o token nunca entra em registro nem
+- [x] 5.7 Entrada bem-sucedida registra interação; o token nunca entra em registro nem
       em log
-- [ ] 5.8 `POST /mensagem`: exige token, identifica pela sessão, chama o núcleo e
+- [x] 5.8 `POST /mensagem`: exige token, identifica pela sessão, chama o núcleo e
       devolve a resposta na mesma requisição
-- [ ] 5.9 Campo de identificação no corpo é ignorado, não respeitado
-- [ ] 5.10 Nenhuma rota lista participantes nem alcança o admin
+- [x] 5.9 Campo de identificação no corpo é ignorado, não respeitado
+- [x] 5.10 Nenhuma rota lista participantes nem alcança o admin
 
 ## 6. Página pública
 
@@ -75,8 +76,8 @@
 
 ## 7. Admin
 
-- [ ] 7.1 `convidarPiloto` recebe e grava a data de nascimento
-- [ ] 7.2 Formulário de convite ganha o campo, obrigatório; data malformada ou futura é
+- [x] 7.1 `convidarPiloto` recebe e grava a data de nascimento
+- [x] 7.2 Formulário de convite ganha o campo, obrigatório; data malformada ou futura é
       recusada antes do banco
 - [ ] 7.3 Página do participante: exibe e permite corrigir a data de nascimento,
       auditado
@@ -88,20 +89,20 @@
 - [x] 8.2 Núcleo não importa módulo de canal
 - [x] 8.3 Anamnese iniciada num canal continua no outro, do ponto em que parou
 - [x] 8.4 Comportamento do WhatsApp inalterado — a suíte existente passa sem edição
-- [ ] 8.5 Entrada válida devolve token; telefone desconhecido, data errada e participante
+- [x] 8.5 Entrada válida devolve token; telefone desconhecido, data errada e participante
       sem data devolvem **a mesma** resposta
-- [ ] 8.6 Entrada nunca cria participante
-- [ ] 8.7 Bloqueio por origem e bloqueio por telefone, cada um isoladamente
-- [ ] 8.8 Sucesso zera as contagens
-- [ ] 8.9 Token não é recuperável do banco; sessão expirada é recusada e removida
-- [ ] 8.10 `/mensagem` sem token, com token inválido e com token expirado
-- [ ] 8.11 Campo de identidade no corpo não troca o participante
-- [ ] 8.12 Nenhuma resposta do canal web contém token, dado de outro participante ou
-      lista de participantes
+- [x] 8.6 Entrada nunca cria participante
+- [x] 8.7 Bloqueio por origem e bloqueio por telefone, cada um isoladamente
+- [x] 8.8 Sucesso zera as contagens
+- [x] 8.9 Token não é recuperável do banco; sessão expirada é recusada e removida
+- [x] 8.10 `/mensagem` sem token, com token inválido e com token expirado
+- [x] 8.11 Campo de identidade no corpo não troca o participante
+- [x] 8.12 Nenhuma resposta contém dado de outro participante nem lista de
+      participantes; o token só aparece na resposta que o emitiu
 - [ ] 8.13 Gatilho não sai pela web; scheduler segue só no WhatsApp
 - [x] 8.14 Migração: banco antigo ganha as colunas com os dados preservados, e roda
       duas vezes sem efeito na segunda
-- [ ] 8.15 Anonimização redige `data_nascimento` e apaga as sessões
+- [x] 8.15 Anonimização redige `data_nascimento` e apaga as sessões
 - [ ] 8.16 Texto do participante que se parece com HTML aparece como texto
 
 ## 9. Fechamento

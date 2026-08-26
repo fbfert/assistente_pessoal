@@ -1,4 +1,5 @@
 import { getDb } from './db.js'
+import { apagarDoUsuario as apagarSessoesDoUsuario } from './sessaoWebRepo.js'
 import {
   SEM_INFORMACAO,
   REDIGIDO,
@@ -30,6 +31,43 @@ const agora = () => new Date().toISOString()
 
 export function findByWhatsapp(numero, db = getDb()) {
   return db.prepare('SELECT * FROM usuarios WHERE numero_whatsapp = ?').get(numero) ?? null
+}
+
+/** Só os dígitos: `+55 (11) 98888-7777` e `5511988887777` são o mesmo telefone. */
+export const soDigitos = (valor) => String(valor ?? '').replace(/\D/g, '')
+
+/**
+ * Busca por telefone tolerante a formatação — o que a pessoa digita na entrada
+ * pública raramente bate byte a byte com o que o operador cadastrou.
+ *
+ * Varre a tabela em vez de normalizar em SQL: são cinco participantes no piloto,
+ * e uma expressão de REPLACE aninhado no WHERE seria ilegível para economizar um
+ * tempo que não existe nesta escala.
+ */
+export function findByTelefone(telefone, db = getDb()) {
+  const alvo = soDigitos(telefone)
+  if (!alvo) return null
+
+  return (
+    db
+      .prepare('SELECT * FROM usuarios')
+      .all()
+      .find((u) => soDigitos(u.numero_whatsapp) === alvo) ?? null
+  )
+}
+
+/**
+ * Data de nascimento — segundo fator da entrada pelo canal web.
+ *
+ * Fora de `CAMPOS_ANAMNESE` de propósito: não é resposta de anamnese, é
+ * identificação, e o setter genérico daquela whitelist tem outro significado.
+ */
+export function salvarDataNascimento(usuarioId, valor, db = getDb()) {
+  db.prepare('UPDATE usuarios SET data_nascimento = ? WHERE usuario_id = ?').run(
+    valor || null,
+    usuarioId,
+  )
+  return findById(usuarioId, db)
 }
 
 export function findById(usuarioId, db = getDb()) {
@@ -359,7 +397,8 @@ export function reiniciarAnamnese(usuarioId, db = getDb()) {
  *
  * O campo `texto` do histórico TAMBÉM é redigido: é lá que estão as respostas da
  * anamnese e as conversas, escritas pela própria pessoa, quase sempre com nome e
- * detalhes de saúde. Redigir só o número seria fachada.
+ * detalhes de saúde. Redigir só o número seria fachada. A data de nascimento
+ * entra pelo mesmo motivo: é identificação direta.
  *
  * Esta é a única exceção ao append-only do histórico, e é deliberada: um UPDATE
  * que apaga conteúdo identificável preserva mais que um DELETE que apaga a linha.
@@ -370,9 +409,13 @@ export function anonimizarParticipante(usuarioId, db = getDb()) {
   db.transaction(() => {
     db.prepare(
       `UPDATE usuarios
-          SET numero_whatsapp = ?, ${redigirCampos}, pausado = 1
+          SET numero_whatsapp = ?, data_nascimento = ?, ${redigirCampos}, pausado = 1
         WHERE usuario_id = ?`,
-    ).run(`redigido:${usuarioId}`, usuarioId)
+    ).run(`redigido:${usuarioId}`, REDIGIDO, usuarioId)
+
+    // A sessão web é APAGADA, não redigida: uma credencial viva depois da saída
+    // do piloto seria acesso a um dado que a pessoa pediu para encerrar.
+    apagarSessoesDoUsuario(usuarioId, db)
 
     db.prepare('UPDATE remedios SET nome = ?, horario = ? WHERE usuario_id = ?').run(
       REDIGIDO,
