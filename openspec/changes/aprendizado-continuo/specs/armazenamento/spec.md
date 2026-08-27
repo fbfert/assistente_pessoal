@@ -47,7 +47,7 @@ nas linhas do histórico, que ninguém apaga.
 
 `historico_interacoes` SHALL restringir `tipo` a `gatilho_disparado`,
 `resposta_gatilho`, `despejo_espontaneo`, `silencio`, `correcao_reportada`, `anamnese`,
-`acao_admin`, `entrada_web`, `mensagem_enviada` e `aprendizado_perfil`.
+`acao_admin`, `entrada_web`, `mensagem_enviada`, `resposta_bloqueada_seguranca` e `aprendizado_perfil`.
 
 A ampliação dessa lista em banco já existente SHALL ser feita por migração que recria a
 tabela com a constraint atualizada, dentro de transação e com as chaves estrangeiras
@@ -63,6 +63,10 @@ gatilho SHALL continuar sendo registrado apenas como `gatilho_disparado`.
 `aprendizado_perfil` SHALL registrar o que o sistema aprendeu sobre o participante fora
 da anamnese, e SHALL NOT ser confundido com `acao_admin`: um é evento do bot, o outro é
 escrita do operador.
+
+`resposta_bloqueada_seguranca` SHALL registrar resposta que o sistema recusou enviar,
+guardando o texto que teria sido entregue. Esse texto SHALL NOT ser descartado: sem ele
+não há como responder quantas vezes o modelo tentou.
 
 Motivo registrado: sem isso, metade da conversa não existe. Num piloto que existe para
 avaliar a qualidade do que o assistente diz, falta exatamente o lado que importa — e
@@ -120,6 +124,10 @@ coluna anulável obrigaria cada consulta a tratar o caso do nulo para sempre.
 #### Scenario: Envio que falha não vira registro
 - **WHEN** o envio de uma resposta falha
 - **THEN** nenhuma linha `mensagem_enviada` é gravada para ela
+
+#### Scenario: Resposta recusada fica registrada com o texto
+- **WHEN** o sistema bloqueia uma resposta por segurança
+- **THEN** uma linha `resposta_bloqueada_seguranca` guarda o texto que seria enviado
 
 #### Scenario: Aprendizado de perfil é um tipo válido
 - **WHEN** o sistema registra que aprendeu algo novo sobre um participante

@@ -1,5 +1,11 @@
 import { config } from '../config.js'
-import { CANAIS, SEM_INFORMACAO, TIPOS_INTERACAO } from '../constants.js'
+import {
+  CANAIS,
+  RESPOSTA_SEGURA_MEDICACAO,
+  SEM_INFORMACAO,
+  TIPOS_INTERACAO,
+} from '../constants.js'
+import { instruiSobreMedicacao } from './seguranca.js'
 import * as repo from '../db/userRepo.js'
 import { registrar, ultimoGatilhoDisparado } from '../db/interactionLog.js'
 import { ESTADOS } from '../anamnese/questions.js'
@@ -125,6 +131,31 @@ async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair
   ])
 
   const resposta = respostaOuErro
+
+  // REDE DE SEGURANÇA, antes de qualquer envio: o assistente não instrui sobre
+  // medicação. Vale para os dois canais porque mora aqui, e não nos adaptadores.
+  //
+  // Só a saída do MODELO é varrida. A confirmação de remédio, logo abaixo, é
+  // texto constante do código — varrê-la bloquearia a própria mensagem que
+  // existe para dizer o que foi gravado.
+  if (resposta && instruiSobreMedicacao(resposta, remedios).bloqueia) {
+    registrar(
+      {
+        usuarioId: usuario.usuario_id,
+        tipo: TIPOS_INTERACAO.RESPOSTA_BLOQUEADA_SEGURANCA,
+        // O texto recusado é GUARDADO: sem ele não há como auditar quantas vezes
+        // o modelo tentou.
+        texto: resposta,
+        canal,
+      },
+      db,
+    )
+    console.warn(`[conversa] resposta bloqueada por instrução de medicação (usuário ${usuario.usuario_id})`)
+
+    await enviar(usuario.usuario_id, RESPOSTA_SEGURA_MEDICACAO, canal, responder, db)
+
+    return { acao: classe, respondeu: true, bloqueada: true }
+  }
 
   if (resposta) await enviar(usuario.usuario_id, resposta, canal, responder, db)
 

@@ -82,7 +82,25 @@ export const TIPOS_INTERACAO = Object.freeze({
    * Disparo de gatilho NÃO entra aqui — `gatilho_disparado` já registra o texto.
    */
   MENSAGEM_ENVIADA: 'mensagem_enviada',
+  /**
+   * Resposta que o sistema RECUSOU enviar, guardada com o texto que teria sido
+   * entregue.
+   *
+   * O texto não é descartado de propósito: sem ele não há como responder
+   * "quantas vezes o modelo tentou?" — e essa pergunta vai ser feita.
+   */
+  RESPOSTA_BLOQUEADA_SEGURANCA: 'resposta_bloqueada_seguranca',
 })
+
+/**
+ * O que a pessoa recebe no lugar de uma resposta bloqueada.
+ *
+ * Não explica que houve bloqueio: informação que não ajuda quem está em
+ * sobrecarga e que convida a insistir até passar. Quem precisa saber é o
+ * operador, e para ele existe a linha no histórico.
+ */
+export const RESPOSTA_SEGURA_MEDICACAO =
+  'Isso não é uma decisão que eu tomo por você. Quer conversar sobre outra coisa?'
 
 /** Horários padrão dos gatilhos criados ao concluir a anamnese. */
 export const HORARIO_PADRAO_CHECKIN = '08:00'

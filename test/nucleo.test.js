@@ -233,11 +233,14 @@ describe('migração de banco existente', () => {
 
     const aplicadas = migrar(antigo)
 
-    assert.deepEqual(aplicadas, [
+    // O rótulo da migração de CHECK muda a cada valor novo na lista de tipos;
+    // o que precisa ser estável é o CONJUNTO de alterações aplicadas.
+    assert.deepEqual(aplicadas.slice(0, 2), [
       'usuarios.data_nascimento',
       'historico_interacoes.canal',
-      'historico_interacoes.tipo (+mensagem_enviada)',
     ])
+    assert.equal(aplicadas.length, 3)
+    assert.match(aplicadas[2], /^historico_interacoes\.tipo /)
     assert.equal(antigo.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n, 1)
 
     const linha = antigo.prepare('SELECT * FROM historico_interacoes').get()

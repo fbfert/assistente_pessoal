@@ -67,7 +67,7 @@ pela web até o operador preencher — o que é recusa de acesso, não perda de 
 
 `historico_interacoes` SHALL restringir `tipo` a `gatilho_disparado`,
 `resposta_gatilho`, `despejo_espontaneo`, `silencio`, `correcao_reportada`, `anamnese`,
-`acao_admin`, `entrada_web` e `mensagem_enviada`.
+`acao_admin`, `entrada_web`, `mensagem_enviada` e `resposta_bloqueada_seguranca`.
 
 A ampliação dessa lista em banco já existente SHALL ser feita por migração que recria a
 tabela com a constraint atualizada, dentro de transação e com as chaves estrangeiras
@@ -79,6 +79,10 @@ desligadas, conferindo a contagem de linhas antes e depois, e SHALL ser idempote
 `mensagem_enviada` SHALL registrar toda mensagem que o sistema envia numa conversa —
 pergunta de anamnese e resposta de chat livre —, com o canal por onde saiu. Disparo de
 gatilho SHALL continuar sendo registrado apenas como `gatilho_disparado`.
+
+`resposta_bloqueada_seguranca` SHALL registrar resposta que o sistema recusou enviar,
+guardando o texto que teria sido entregue. Esse texto SHALL NOT ser descartado: sem ele
+não há como responder quantas vezes o modelo tentou.
 
 Motivo registrado: sem isso, metade da conversa não existe. Num piloto que existe para
 avaliar a qualidade do que o assistente diz, falta exatamente o lado que importa — e
@@ -136,6 +140,10 @@ coluna anulável obrigaria cada consulta a tratar o caso do nulo para sempre.
 #### Scenario: Envio que falha não vira registro
 - **WHEN** o envio de uma resposta falha
 - **THEN** nenhuma linha `mensagem_enviada` é gravada para ela
+
+#### Scenario: Resposta recusada fica registrada com o texto
+- **WHEN** o sistema bloqueia uma resposta por segurança
+- **THEN** uma linha `resposta_bloqueada_seguranca` guarda o texto que seria enviado
 
 ### Requirement: Criação idempotente de usuário
 

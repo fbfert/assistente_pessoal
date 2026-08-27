@@ -45,7 +45,7 @@ export function migrar(db) {
     aplicadas.push('historico_interacoes.canal')
   }
 
-  if (ampliarTiposDeInteracao(db)) aplicadas.push('historico_interacoes.tipo (+mensagem_enviada)')
+  if (ampliarTiposDeInteracao(db)) aplicadas.push('historico_interacoes.tipo (+resposta_bloqueada_seguranca)')
 
   if (aplicadas.length) console.log(`[db] migrações aplicadas: ${aplicadas.join(', ')}`)
 
@@ -76,7 +76,7 @@ function ampliarTiposDeInteracao(db) {
 
   // O sentinela é sempre o valor MAIS NOVO da lista: um banco que já tem os
   // anteriores mas não este ainda precisa da recriação.
-  if (!definicao || definicao.includes('mensagem_enviada')) return false
+  if (!definicao || definicao.includes('resposta_bloqueada_seguranca')) return false
 
   const antes = db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
   const estavamLigadas = db.pragma('foreign_keys', { simple: true })
@@ -93,7 +93,8 @@ function ampliarTiposDeInteracao(db) {
                                                       'despejo_espontaneo', 'silencio',
                                                       'correcao_reportada', 'anamnese',
                                                       'acao_admin', 'entrada_web',
-                                                      'mensagem_enviada')),
+                                                      'mensagem_enviada',
+                                                      'resposta_bloqueada_seguranca')),
           timestamp           TEXT    NOT NULL,
           texto               TEXT,
           gatilho_relacionado TEXT,

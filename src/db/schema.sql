@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS historico_interacoes (
                                               'despejo_espontaneo', 'silencio',
                                               'correcao_reportada', 'anamnese',
                                               'acao_admin', 'entrada_web',
-                                              'mensagem_enviada')),
+                                              'mensagem_enviada',
+                                              'resposta_bloqueada_seguranca')),
   timestamp           TEXT    NOT NULL,
   texto               TEXT,
   -- Tipo do gatilho a que esta linha se refere (disparo, resposta ou silêncio).
