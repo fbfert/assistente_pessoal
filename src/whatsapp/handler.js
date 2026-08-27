@@ -1,8 +1,9 @@
 import { CANAIS } from '../constants.js'
 import * as repo from '../db/userRepo.js'
-import { TEXTO_CONSENTIMENTO } from '../anamnese/questions.js'
+import { ESTADOS, TEXTO_CONSENTIMENTO } from '../anamnese/questions.js'
 import { extrairRemedios } from '../anamnese/extrairRemedios.js'
 import { processarMensagem } from '../conversa/nucleo.js'
+import { agrupar } from './debounce.js'
 import { chamarLLM } from '../llm/router.js'
 import { transcreverAudio } from '../transcription/transcribe.js'
 
@@ -64,8 +65,23 @@ export async function tratarMensagemRecebida(msg, enviarMensagem, deps = {}) {
   // mandar é o adaptador.
   const responder = (resposta) => enviarMensagem(usuario.numero_whatsapp, resposta)
 
-  return processarMensagem(
-    { usuario, texto, canal: CANAIS.WHATSAPP, responder },
-    { chamar, extrair, db },
-  )
+  const processar = (textoFinal) =>
+    processarMensagem(
+      // O usuário é relido no momento do processamento: numa janela de
+      // agrupamento de segundos, o estado dele pode ter mudado.
+      { usuario: repo.findById(usuario.usuario_id, db) ?? usuario, texto: textoFinal, canal: CANAIS.WHATSAPP, responder },
+      { chamar, extrair, db },
+    )
+
+  // Agrupamento só no chat livre. Durante a anamnese, cada mensagem é processada
+  // na hora: ela é pergunta-resposta de um passo por vez, e juntar duas faria a
+  // máquina de estados pular um estado ou gravar duas respostas no mesmo campo.
+  if (usuario.anamnese_estado === ESTADOS.CONCLUIDO) {
+    const { agrupou, resultado } = agrupar(usuario.usuario_id, texto, processar, deps.debounce)
+    // Quando não agrupa, o retorno é o do núcleo, idêntico ao de antes desta
+    // mudança — o comportamento com o agrupamento desligado não muda em nada.
+    return agrupou ? { acao: 'agrupando' } : resultado
+  }
+
+  return processar(texto)
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import * as repo from '../../db/userRepo.js'
 import * as notasRepo from '../../db/notasRepo.js'
+import { versaoDoConsentimento } from '../../db/conteudoRepo.js'
 import { listarInteracoes } from '../../db/interactionLog.js'
 import { pagina, escapar, rotuloGatilho, estadoLegivel } from '../html.js'
 import { SEM_INFORMACAO, TIPOS_GATILHO, TIPOS_INTERACAO } from '../../constants.js'
@@ -60,13 +61,44 @@ ${blocoParticipacao(usuario)}
 ${blocoHistorico(interacoes)}`
 }
 
+/**
+ * A versão aceita, e se ela ainda é a vigente — visível de relance.
+ *
+ * Sem a comparação, `consentimento_versao` é um número solto: só diz alguma coisa
+ * a quem lembra de cor qual é a versão atual do texto.
+ */
 function blocoConsentimento(u) {
+  let vigente = null
+  try {
+    vigente = versaoDoConsentimento()
+  } catch {
+    /* sem banco de conteúdo, mostra só o que a pessoa aceitou */
+  }
+
+  const aceita = u.consentimento_versao
+  const desatualizada = Boolean(aceita && vigente && aceita !== vigente)
+
   return `<h2>Consentimento</h2>
 <table>
 <tr><th>Aceito</th><td>${u.consentimento_aceito ? 'sim' : 'não'}</td></tr>
-<tr><th>Versão</th><td>${escapar(u.consentimento_versao) || SEM_INFORMACAO}</td></tr>
+<tr${desatualizada ? ' class="alerta"' : ''}><th>Versão</th><td>${
+    escapar(aceita) || SEM_INFORMACAO
+  }${
+    desatualizada
+      ? ` — <strong>versão anterior</strong>; a vigente é ${escapar(vigente)}`
+      : vigente
+        ? ' <span class="nota">(vigente)</span>'
+        : ''
+  }</td></tr>
 <tr><th>Quando</th><td class="num">${escapar(u.consentimento_timestamp) || SEM_INFORMACAO}</td></tr>
-</table>`
+</table>${
+    desatualizada
+      ? `<p class="nota">O consentimento continua válido: quem aceitou uma versão anterior
+         segue consentido, por decisão registrada. Isto está aqui para a decisão ser
+         auditável — e para ser revista se alguma edição mudar o que é feito com o dado,
+         não apenas a redação.</p>`
+      : ''
+  }`
 }
 
 /**

@@ -18,6 +18,13 @@ export const ESTADOS = Object.freeze({
   CONCLUIDO: 12,
 })
 
+/**
+ * Versão de FÁBRICA do consentimento — a do texto que está neste arquivo.
+ *
+ * A versão vigente é derivada do histórico de edições
+ * (`conteudoRepo.versaoDoConsentimento`). Esta constante é o ponto de partida e o
+ * socorro quando o banco não puder ser lido.
+ */
 export const VERSAO_CONSENTIMENTO = 'v1'
 
 /**

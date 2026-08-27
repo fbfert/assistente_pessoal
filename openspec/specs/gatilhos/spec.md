@@ -23,15 +23,21 @@ Novos tipos SHALL ser desbloqueados por necessidade relatada no piloto, não por
 
 Ao concluir a anamnese, o sistema SHALL configurar:
 
-- `checkin_manha` às 08:00, ativo;
+- `checkin_manha` no horário padrão configurado, ativo;
 - um gatilho `remedio` por remédio cadastrado que tenha nome **e** horário válidos;
-- `checklist_fim_dia` às 20:00, com `ativo = 0`.
+- `checklist_fim_dia` no horário padrão configurado, com `ativo = 0`.
 
-O sistema SHALL NOT criar gatilho para remédio cujo nome ou horário seja `sem informação`,
-porque não há o que lembrar.
+Os horários padrão SHALL vir da configuração viva, recaindo na constante do código
+quando não configurados.
 
-O `checklist_fim_dia` SHALL permanecer inativo por padrão no MVP, ativado apenas por decisão
-manual.
+O sistema SHALL NOT criar gatilho para remédio cujo nome ou horário seja
+`sem informação`, porque não há o que lembrar.
+
+O `checklist_fim_dia` SHALL permanecer inativo por padrão, ativado apenas por
+decisão manual.
+
+Alterar um horário padrão SHALL NOT modificar gatilho já configurado de
+participante existente.
 
 #### Scenario: Remédio sem horário não vira gatilho
 - **WHEN** um remédio cadastrado tem horário igual a `sem informação`
@@ -39,7 +45,12 @@ manual.
 
 #### Scenario: Checklist nasce desligado
 - **WHEN** a anamnese conclui
-- **THEN** o `checklist_fim_dia` existe às 20:00 com `ativo = 0`
+- **THEN** o `checklist_fim_dia` existe no horário padrão com `ativo = 0`
+
+#### Scenario: Padrão novo vale só para quem vier depois
+- **WHEN** o horário padrão do check-in é alterado
+- **THEN** participantes já configurados mantêm o horário que tinham, e os que
+  concluírem a anamnese a partir daí recebem o novo
 
 ### Requirement: Horário calculado em São Paulo
 

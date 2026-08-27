@@ -70,33 +70,33 @@
 
 ## 6. Consentimento versionado
 
-- [ ] 6.1 Esquema de versão e incremento automático a cada edição
-- [ ] 6.2 Sem caminho de salvar o texto mantendo a versão
-- [ ] 6.3 Versão aceita visível na página do participante, com marca de desatualizada
-- [ ] 6.4 **Sem** fluxo de re-consentimento: documentar no README que
+- [x] 6.1 Esquema de versão e incremento automático a cada edição
+- [x] 6.2 Sem caminho de salvar o texto mantendo a versão
+- [x] 6.3 Versão aceita visível na página do participante, com marca de desatualizada
+- [x] 6.4 **Sem** fluxo de re-consentimento: documentar no README que
       consentimentos antigos seguem válidos, e a condição em que a decisão precisa
       ser revista (edição que mude o tratamento do dado, não só a redação)
-- [ ] 6.5 Testes: incremento a cada edição, versão vigente para quem chega novo,
+- [x] 6.5 Testes: incremento a cada edição, versão vigente para quem chega novo,
       marca de versão anterior na página do participante
 
 ## 7. Debounce
 
-- [ ] 7.1 `src/whatsapp/debounce.js` com buffer por participante — no ADAPTADOR do
+- [x] 7.1 `src/whatsapp/debounce.js` com buffer por participante — no ADAPTADOR do
       WhatsApp, não no núcleo: é comportamento de transporte, como a transcrição
-- [ ] 7.2 Zero significa processar na hora; é o padrão
-- [ ] 7.3 Só para anamnese concluída — a anamnese não passa pelo buffer
-- [ ] 7.7 O canal web NÃO passa pelo buffer: a rota é requisição-resposta, e o
+- [x] 7.2 Zero significa processar na hora; é o padrão
+- [x] 7.3 Só para anamnese concluída — a anamnese não passa pelo buffer
+- [x] 7.7 O canal web NÃO passa pelo buffer: a rota é requisição-resposta, e o
       cliente já serializa os envios. Teste que falha se o núcleo ganhar o agrupamento
-- [ ] 7.4 Áudio transcrito e incorporado na ordem de chegada
-- [ ] 7.5 **Sem** persistência: documentar no README que mensagens em buffer se
+- [x] 7.4 Áudio transcrito e incorporado na ordem de chegada
+- [x] 7.5 **Sem** persistência: documentar no README que mensagens em buffer se
       perdem se o bot reiniciar dentro da janela
-- [ ] 7.6 Testes com timers controlados, sem esperar segundos de verdade
+- [x] 7.6 Testes com timers controlados, sem esperar segundos de verdade
 
 ## 8. Fechamento
 
-- [ ] 8.1 README: telas novas, config editável, custo real do teste de mensagem,
+- [x] 8.1 README: telas novas, config editável, custo real do teste de mensagem,
       e que a chave de API continua só no ambiente
-- [ ] 8.2 `.env.example`: variáveis que migraram para a configuração viva
-- [ ] 8.3 `openspec validate --all` e suíte inteira
-- [ ] 8.4 Verificar rodando no Docker, pelo domínio
-- [ ] 8.5 Sync, archive e commit local
+- [x] 8.2 `.env.example`: variáveis que migraram para a configuração viva
+- [x] 8.3 `openspec validate --all` e suíte inteira
+- [x] 8.4 Verificar rodando no Docker, pelo domínio
+- [x] 8.5 Sync, archive e commit local

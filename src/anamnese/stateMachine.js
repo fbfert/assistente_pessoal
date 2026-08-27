@@ -11,7 +11,11 @@ import {
   VERSAO_CONSENTIMENTO,
   MARCAS_INTERNAS_DE_ANAMNESE,
 } from './questions.js'
-import { perguntaVigente, consentimentoVigente } from '../db/conteudoRepo.js'
+import {
+  perguntaVigente,
+  consentimentoVigente,
+  versaoDoConsentimento,
+} from '../db/conteudoRepo.js'
 import {
   perguntaEscolhaPersonalidade,
   mapearRespostaPersonalidade,
@@ -153,13 +157,25 @@ export async function processarResposta(usuario, texto, deps = {}) {
   }
 }
 
+/** A versão que está valendo agora, com a de fábrica como socorro. */
+export function versaoVigenteDoConsentimento() {
+  try {
+    return versaoDoConsentimento()
+  } catch {
+    return VERSAO_CONSENTIMENTO
+  }
+}
+
 function processarConsentimento(texto) {
   if (isAfirmativo(texto)) {
+    // A versão é lida no momento do aceite: é o texto que ESTA pessoa leu.
+    const versao = versaoVigenteDoConsentimento()
+
     return plano([perguntaDoEstado(ESTADOS.NOME)], [
-      { tipo: 'registrarConsentimento', versao: VERSAO_CONSENTIMENTO },
+      { tipo: 'registrarConsentimento', versao },
       registrarInteracao(
         TIPOS_INTERACAO.ANAMNESE,
-        MARCAS_INTERNAS_DE_ANAMNESE.CONSENTIMENTO_ACEITO(VERSAO_CONSENTIMENTO),
+        MARCAS_INTERNAS_DE_ANAMNESE.CONSENTIMENTO_ACEITO(versao),
       ),
       irPara(ESTADOS.NOME),
     ])

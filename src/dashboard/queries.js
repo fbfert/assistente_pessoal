@@ -127,3 +127,16 @@ export function panoramaDeGatilhos(db = getDb()) {
     })),
   }
 }
+
+/** Quantos participantes aceitaram cada versão do consentimento. */
+export function contarPorVersaoDeConsentimento(db = getDb()) {
+  return db
+    .prepare(
+      `SELECT consentimento_versao AS versao, COUNT(*) n
+         FROM usuarios
+        WHERE consentimento_aceito = 1
+     GROUP BY consentimento_versao
+     ORDER BY consentimento_versao`,
+    )
+    .all()
+}

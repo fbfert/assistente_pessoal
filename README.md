@@ -421,6 +421,116 @@ participante**: quem não foi convidado não entra.
 > não exigir senha de quem tem TDAH no primeiro contato. Se o piloto crescer, é a
 > primeira coisa a trocar.
 
+### Configuração viva: mudar sem deploy
+
+Os números e textos que o piloto existe para calibrar saem do código e viram
+editáveis pela interface, com histórico de autor e caminho de volta.
+
+**Onde fica cada coisa:**
+
+| O quê | Onde se edita |
+|---|---|
+| Horário padrão dos gatilhos, mensagens de cada tipo | `/gatilhos` |
+| Núcleo fixo, variantes de tom, texto de consentimento | `/ia` |
+| Chave de API e provedor ativo | `/credenciais` — **nunca** nas outras duas |
+
+**Ordem de leitura, três degraus:** o valor no banco; a variável de ambiente, para
+as chaves que têm uma; a constante do código. O terceiro existe porque parte das
+chaves nunca teve variável — os horários padrão sempre foram constantes.
+
+**Reverter é escrever de novo.** A linha antiga do histórico fica onde está e a
+reversão acrescenta a sua. Um "desfazer" que apagasse o rastro tiraria do piloto a
+única resposta para *"o comportamento mudou; foi o produto ou fui eu mexendo?"*.
+"Restaurar padrão" volta à constante do código, não à linha mais antiga — que já
+pode ser uma edição.
+
+**Toda mudança é auditada** em `auditoria_admin`, com autor, chave e os dois
+valores. Configuração global não tem participante associado; por isso não vai para
+o histórico de ninguém.
+
+### A tela de Gatilhos
+
+Reúne o que estava em cinco lugares: por tipo, o horário padrão, as mensagens
+(normal e a de tom reduzido, que é a regra de silêncio em ação) e quantos
+participantes têm aquele tipo ativo. Embaixo, uma linha por participante, só
+leitura, com link para a página dele — mudar o gatilho de UMA pessoa continua
+sendo lá.
+
+Mensagem passa por confirmação em duas etapas, com o antes e o depois lado a lado;
+horário salva direto. A mensagem é o que todo mundo vai ler; o horário padrão só
+alcança quem for convidado daqui para frente — e a tela diz isso.
+
+A mensagem de remédio usa o marcador `{remedio}`, e o sistema **recusa** salvá-la
+sem ele: sem o marcador, o lembrete deixaria de dizer qual remédio é.
+
+### A tela de IA e persona
+
+Núcleo fixo, as três variantes de tom e o texto de consentimento num lugar só. O
+provedor ativo aparece em leitura, com link para `/credenciais` — aqui não há
+campo de chave de API, de propósito.
+
+**Testar antes de publicar.** Você escreve uma mensagem de exemplo, escolhe a
+variante e o sistema chama o LLM de verdade contra um contexto de anamnese
+**fictício** — nunca o de um participante real, que transformaria o teste numa
+forma de ler dado de saúde sem abrir a página da pessoa. Usa o texto que está nos
+campos, **inclusive o que você ainda não salvou**: é o que permite calibrar antes
+de publicar para todos.
+
+A chamada não grava nada: nenhum participante, nenhum histórico, nenhum contador.
+
+> **Cada teste é uma chamada paga.** O teto é de 20 por administrador e por hora,
+> configurável em `TESTE_IA_LIMITE_HORA`; zero desliga o limite. Ele existe para o
+> caso acidental — formulário reenviado em laço, aba esquecida recarregando.
+
+Depois de responder, a tela avisa se aquela resposta **seria bloqueada** pela
+verificação de medicação antes de chegar em alguém. Se você está editando o núcleo
+e isso aparece, é sinal de que a Regra 1c ficou fraca.
+
+**O núcleo fixo pede confirmação reforçada:** digitar uma palavra numa segunda
+etapa, não um clique. Ele carrega as regras de segurança do produto, e um erro ali
+muda o comportamento com todos ao mesmo tempo, em silêncio. A exigência vive no
+repositório, não na tela — nenhum caminho novo consegue contorná-la.
+
+> A verificação determinística que bloqueia instrução de medicação **não** é
+> editável pela interface, de propósito. Se fosse, uma única edição descuidada
+> removeria as duas camadas de uma vez.
+
+### Consentimento: editar sempre troca a versão
+
+O texto de consentimento se edita em `/ia`. **Toda gravação incrementa a versão** —
+não existe caminho de salvar mantendo a versão, porque a versão é derivada da
+contagem de edições. `usuarios.consentimento_versao` só significa alguma coisa se
+identificar qual texto a pessoa leu.
+
+**Quem já aceitou continua consentido**, com a versão que aceitou registrada. Não
+há fluxo de reconsentimento — decisão registrada do dono do produto. A página do
+participante marca quem está numa versão anterior, para a decisão ser auditável.
+
+> Se uma edição futura mudar **o que é feito com o dado**, e não apenas a redação,
+> essa decisão precisa ser revista: o consentimento registrado deixaria de cobrir o
+> tratamento real.
+
+### Agrupar mensagens em rajada (debounce)
+
+Quem está em sobrecarga escreve em pedaços. Com `DEBOUNCE_SEGUNDOS` acima de zero,
+o bot espera esse tanto de silêncio depois da última mensagem e responde as três de
+uma vez, em lugar de três respostas.
+
+**Nasce desligado** (`0` = comportamento de sempre) e é editável na configuração
+viva. Vale **só no WhatsApp** e **só no chat livre**:
+
+- durante a anamnese nunca agrupa — ela é pergunta-resposta de um passo por vez, e
+  juntar duas mensagens faria a máquina de estados pular um estado;
+- no canal web não faz sentido: a rota é requisição-resposta, e o cliente já
+  impede a rajada desabilitando o envio enquanto espera.
+
+Áudio entra no grupo **transcrito e na ordem em que chegou**.
+
+> O buffer vive na memória do processo. Se o container reiniciar dentro da janela
+> de poucos segundos, as mensagens acumuladas se perdem. É limitação aceita por
+> decisão registrada: persistir custaria uma escrita no caminho quente de toda
+> mensagem para cobrir um evento raro.
+
 ## Recriar o banco (só com o banco vazio)
 
 As mudanças de schema do backend admin — coluna `pausado`, tipo `acao_admin` e a

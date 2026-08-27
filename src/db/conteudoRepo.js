@@ -252,6 +252,29 @@ export const varianteVigente = (nome, db) => ler(`variante_${nome}`, db)
 export const perguntaVigente = (estado, db) => ler(chaveDaPergunta(estado), db)
 export const consentimentoVigente = (db) => ler('texto_consentimento', db)
 
+/**
+ * Versão vigente do consentimento, DERIVADA do histórico daquela chave.
+ *
+ * `v1` é o texto de fábrica; cada edição gravada leva à seguinte. Derivar em vez
+ * de guardar num campo à parte elimina o estado que poderia divergir: não existe
+ * caminho de salvar o texto mantendo a versão, porque a versão é uma contagem do
+ * que já foi salvo.
+ *
+ * Isso importa porque `usuarios.consentimento_versao` só significa alguma coisa
+ * se identificar QUAL texto a pessoa leu. Uma edição sem troca de versão faria o
+ * campo apontar para um conteúdo que não existe mais.
+ *
+ * Restaurar o padrão também incrementa — é uma gravação como qualquer outra, e o
+ * texto de `v3` ser igual ao de `v1` não muda o fato de que houve duas mudanças
+ * no meio.
+ */
+export function versaoDoConsentimento(db = getDb()) {
+  const { n } = db
+    .prepare("SELECT COUNT(*) n FROM prompts_historico WHERE chave = 'texto_consentimento'")
+    .get()
+  return `v${n + 1}`
+}
+
 /** Os dois textos de um gatilho, na forma que `montarMensagemGatilho` consome. */
 export const textosDoGatilho = (tipo, db) => ({
   normal: ler(`mensagem_${tipo}`, db),

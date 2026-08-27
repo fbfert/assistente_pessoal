@@ -1384,3 +1384,79 @@ describe('tela de IA e persona', () => {
     assert.equal((await cru('/ia')).status, 302)
   })
 })
+
+describe('consentimento versionado', () => {
+  before(async () => {
+    cookie = await autenticar()
+  })
+
+  test('a versão é derivada do histórico do texto', () => {
+    const inicial = conteudo.versaoDoConsentimento(db)
+
+    conteudo.escrever('texto_consentimento', 'Texto de consentimento, versão de teste.', {}, db)
+
+    assert.notEqual(conteudo.versaoDoConsentimento(db), inicial)
+    assert.match(conteudo.versaoDoConsentimento(db), /^v\d+$/)
+  })
+
+  test('não existe caminho de salvar mantendo a versão', async () => {
+    const antes = conteudo.versaoDoConsentimento(db)
+
+    await post('/ia/conteudo/texto_consentimento', {
+      conteudo: `Outro texto de consentimento. ${antes}`,
+    })
+
+    assert.notEqual(conteudo.versaoDoConsentimento(db), antes, 'toda gravação incrementa')
+  })
+
+  test('restaurar o padrão também incrementa', () => {
+    const antes = conteudo.versaoDoConsentimento(db)
+    conteudo.restaurarPadrao('texto_consentimento', {}, db)
+
+    assert.notEqual(conteudo.versaoDoConsentimento(db), antes)
+  })
+
+  test('quem chega novo aceita a versão VIGENTE', async () => {
+    conteudo.escrever('texto_consentimento', 'Consentimento para o teste de versão.', {}, db)
+    const vigente = conteudo.versaoDoConsentimento(db)
+
+    const u = repo.findOrCreate('+5511900000070', db)
+    repo.setAnamneseEstado(u.usuario_id, 0, db)
+    const { processarResposta } = await import('../src/anamnese/stateMachine.js')
+    const { aplicarPlano } = await import('../src/anamnese/aplicarPlano.js')
+    aplicarPlano(u.usuario_id, await processarResposta(repo.findById(u.usuario_id, db), 'sim'), db)
+
+    assert.equal(repo.findById(u.usuario_id, db).consentimento_versao, vigente)
+  })
+
+  test('a página do participante marca quem está em versão anterior', async () => {
+    // O beforeEach limpa participantes entre testes — este cria o seu.
+    const u = repo.findOrCreate('+5511900000071', db)
+    repo.setAnamneseEstado(u.usuario_id, 0, db)
+    const { processarResposta } = await import('../src/anamnese/stateMachine.js')
+    const { aplicarPlano } = await import('../src/anamnese/aplicarPlano.js')
+    aplicarPlano(u.usuario_id, await processarResposta(repo.findById(u.usuario_id, db), 'sim'), db)
+
+    const aceita = repo.findById(u.usuario_id, db).consentimento_versao
+    assert.ok(aceita, 'a pessoa precisa ter aceitado alguma versão')
+
+    // Uma edição depois, quem aceitou fica para trás.
+    conteudo.escrever('texto_consentimento', 'Mais uma edição do consentimento.', {}, db)
+
+    const html = await (await get(`/usuarios/${u.usuario_id}`)).text()
+
+    assert.match(html, new RegExp(escaparRegex(aceita)))
+    assert.match(html, /versão anterior/)
+    assert.match(html, /continua válido/)
+  })
+
+  test('a tela de IA mostra a versão vigente e o aviso do que a edição custa', async () => {
+    const html = await (await get('/ia')).text()
+
+    assert.match(html, /Versão vigente/)
+    assert.match(html, /SEMPRE incrementa/)
+    assert.match(html, /continua consentido/)
+  })
+})
+
+const escaparRegex = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

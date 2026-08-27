@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import * as conteudo from '../../db/conteudoRepo.js'
+import { contarPorVersaoDeConsentimento } from '../queries.js'
 import { config } from '../../config.js'
 import { chamarLLM, providerAtivo } from '../../llm/router.js'
 import { montarContextoAnamnese, PERSONALIDADES } from '../../llm/prompts.js'
@@ -18,9 +19,20 @@ export const rotasIa = Router()
  */
 
 /** As chaves que esta tela edita. Núcleo primeiro, por ser o que mais pesa. */
+/**
+ * O consentimento fica NESTA tela, em seção própria.
+ *
+ * É texto do produto com a mesma mecânica de edição das outras chaves, e esta já
+ * é a tela do "o que o assistente diz". Uma tela só para ele custaria navegação a
+ * mais para um texto que se edita raramente — e separaria do lugar onde quem
+ * calibra a persona já está olhando.
+ *
+ * O que ele tem de diferente é a versão, e isso a seção explica na tela.
+ */
 const CHAVES_DA_TELA = [
   'nucleo_fixo',
   ...PERSONALIDADES.map((p) => `variante_${p.valor}`),
+  'texto_consentimento',
 ]
 
 /**
@@ -271,6 +283,36 @@ function blocoTeste(teste) {
 </div>`
 }
 
+/**
+ * A seção do consentimento diz o que a edição custa.
+ *
+ * Sem isso, "salvar" parece uma correção de texto como outra qualquer — e é a
+ * única edição desta tela que muda o significado de um dado já gravado em cada
+ * participante.
+ */
+function avisoDoConsentimento() {
+  const versao = conteudo.versaoDoConsentimento()
+  const porVersao = contarPorVersaoDeConsentimento()
+  const desatualizados = porVersao.filter((v) => v.versao && v.versao !== versao)
+
+  return `<div class="aviso">
+  <p><strong>Versão vigente: ${escapar(versao)}.</strong> Salvar este texto SEMPRE incrementa a
+  versão — não existe caminho de editar mantendo a versão, porque
+  <code>consentimento_versao</code> só significa alguma coisa se identificar qual texto a
+  pessoa leu.</p>
+  <p>Quem já aceitou <strong>continua consentido</strong>, com a versão que aceitou registrada.
+  Não há fluxo de reconsentimento — decisão registrada. Se uma edição mudar <em>o que é feito
+  com o dado</em>, e não apenas a redação, essa decisão precisa ser revista.</p>
+  ${
+    desatualizados.length
+      ? `<p>Hoje, em versão anterior: ${desatualizados
+          .map((v) => `<strong>${v.n}</strong> em ${escapar(v.versao)}`)
+          .join(', ')}.</p>`
+      : ''
+  }
+</div>`
+}
+
 function tela({ erro = null, teste = null } = {}) {
   const blocos = CHAVES_DA_TELA.map((chave) => {
     const seed = conteudo.catalogo()[chave]
@@ -279,8 +321,11 @@ function tela({ erro = null, teste = null } = {}) {
 
     return `<fieldset>
   <legend>${escapar(seed.rotulo)}${editado ? ' <span class="nota">(editado)</span>' : ''}</legend>
+  ${chave === 'texto_consentimento' ? avisoDoConsentimento() : ''}
   <form method="post" action="/ia/conteudo/${chave}/confirmar">
-    <textarea name="conteudo" rows="${chave === 'nucleo_fixo' ? 18 : 5}">${escapar(atual)}</textarea>
+    <textarea name="conteudo" rows="${
+      chave === 'nucleo_fixo' || chave === 'texto_consentimento' ? 18 : 5
+    }">${escapar(atual)}</textarea>
     <p>
       <button type="submit">Salvar</button>
       ${
