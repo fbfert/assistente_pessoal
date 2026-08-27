@@ -34,6 +34,25 @@ imediatamente, como antes.
 - **WHEN** o intervalo está em zero
 - **THEN** cada mensagem é processada assim que chega
 
+### Requirement: Agrupamento é do canal WhatsApp
+
+O agrupamento SHALL viver no adaptador do WhatsApp e SHALL NOT ser aplicado ao canal
+web.
+
+O núcleo de conversa SHALL NOT conhecer o agrupamento: ele continua recebendo uma
+mensagem e devolvendo uma resposta.
+
+Motivo registrado: agrupar é comportamento de transporte, da mesma família da
+transcrição de áudio e do filtro de mensagem de grupo. No canal web a rota é
+requisição-resposta — segurar a requisição por segundos deixaria a pessoa diante de
+uma tela travada, e devolver vazio não teria para onde mandar a resposta depois,
+porque a web não tem entrega proativa. Além disso a rajada não acontece lá: o cliente
+desabilita o envio enquanto a chamada está pendente.
+
+#### Scenario: Mensagem pela web não é agrupada
+- **WHEN** chega mensagem pelo canal web com o intervalo configurado acima de zero
+- **THEN** ela é processada imediatamente e a resposta volta na mesma requisição
+
 ### Requirement: Nunca durante a anamnese
 
 O agrupamento SHALL ser aplicado apenas a participante com anamnese concluída.

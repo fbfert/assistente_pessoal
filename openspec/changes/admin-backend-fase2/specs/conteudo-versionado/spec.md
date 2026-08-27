@@ -50,6 +50,24 @@ conselho que o sistema não deveria dar.
 - **WHEN** o núcleo fixo é editado por qualquer tela do admin
 - **THEN** a confirmação reforçada continua sendo exigida
 
+### Requirement: A verificação determinística não é editável pela interface
+
+O bloqueio determinístico que impede o assistente de instruir sobre medicação
+SHALL NOT ser editável pela interface, e SHALL NOT viver no conteúdo versionado.
+
+Tornar o núcleo fixo editável SHALL NOT afetar essa verificação.
+
+Motivo registrado: a proteção contra instrução de medicação tem duas camadas — a
+Regra 1c, que é texto do núcleo fixo, e uma varredura determinística da resposta
+antes do envio. Editar o núcleo pela tela pode apagar a primeira; se a segunda também
+fosse editável, uma única edição descuidada removeria as duas de uma vez. A segunda
+muda por código, com revisão e teste.
+
+#### Scenario: Núcleo esvaziado, bloqueio de pé
+- **WHEN** o núcleo fixo é editado a ponto de perder a regra sobre medicação
+- **THEN** a verificação determinística continua bloqueando resposta que instrua sobre
+  remédio cadastrado do participante
+
 ### Requirement: Núcleo fixo não pode ficar vazio
 
 O sistema SHALL recusar gravação de núcleo fixo vazio ou composto apenas de espaço.

@@ -19,6 +19,17 @@ O que existe de relevante para o que vem agora:
 - A auditoria tem dois destinos: `historico_interacoes` com `tipo='acao_admin'`
   para ação sobre participante, e `auditoria_admin` para ação sobre a equipe.
 
+### O que rodou depois desta proposta ser escrita
+
+Cinco mudanças foram implementadas e arquivadas entre a escrita desta proposta e
+agora. Três encostam nela:
+
+| Mudança | Efeito sobre esta proposta |
+|---|---|
+| `conexao-llm` | **Já entregou o provedor ativo**, em `chavesRepo.lerAtivo/escreverAtivo` com tela em `/credenciais`. Ele SAIU do escopo de `config-viva` e da tela de IA, que passa a apenas exibi-lo com link. Duas fontes de verdade para o mesmo botão seria o bug caro. |
+| `canal-web` | Extraiu o núcleo canal-agnóstico. O debounce **continua no adaptador do WhatsApp** — ver a decisão abaixo, que agora explica por quê em vez de só onde. |
+| `seguranca-instrucao-medicacao` | Acrescentou a **Regra 1c** ao núcleo fixo e uma segunda camada determinística. Muda o cálculo de risco do núcleo editável — ver Risks. |
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -155,11 +166,26 @@ a página dele, fora do rastro de auditoria.
 A chamada **não** grava em `historico_interacoes`, não referencia `usuario_id` e
 não altera contador nenhum. É uma chamada isolada ao `chamarLLM` que já existe.
 
-### Debounce: memória do processo, só no chat livre
+### Debounce: no adaptador do WhatsApp, e só lá
 
-Buffer `Map` de `usuario_id` para `{ timer, mensagens }`, no processo do bot.
-`DEBOUNCE_SEGUNDOS = 0` é o padrão e significa o comportamento de hoje — resposta
-imediata —, então a funcionalidade nasce desligada.
+Buffer `Map` de `usuario_id` para `{ timer, mensagens }`, dentro de
+`src/whatsapp/handler.js`. `DEBOUNCE_SEGUNDOS = 0` é o padrão e significa o
+comportamento de hoje — resposta imediata —, então a funcionalidade nasce desligada.
+
+**Não sobe para o núcleo, e isso não contraria o AGENTS §5b — confirma.** Debounce é
+comportamento de TRANSPORTE, da mesma família da transcrição de áudio e do filtro de
+grupo: existe porque o WhatsApp entrega mensagem quando quer e a resposta é empurrada
+depois. O núcleo continua recebendo uma mensagem e devolvendo uma resposta.
+
+**No canal web ele não faz sentido, e nem caberia.** A rota é
+requisição-resposta: a resposta volta na mesma chamada. Segurar a requisição por
+segundos para agrupar deixaria a pessoa olhando a tela travada, e devolver vazio
+não teria para onde mandar a resposta depois — a web não tem entrega proativa, por
+decisão de produto.
+
+E a rajada simplesmente não acontece lá: o cliente desabilita o botão enquanto a
+chamada está pendente (`enviando` em `app.js`), então a pessoa não consegue mandar
+três mensagens seguidas. O debounce conserta um problema que só existe no WhatsApp.
 
 Áudio entra no buffer **transcrito e na ordem de chegada**. Deixar áudio passar
 direto faria a resposta chegar fora de ordem em relação ao texto que veio antes,
@@ -176,6 +202,21 @@ pode remover a proibição de inventar dado de saúde ou a de não agir como
 terapeuta, e o efeito aparece silenciosamente, na conversa de todos. Mitigação:
 confirmação reforçada, histórico com autor, reversão em um clique e restauração de
 fábrica. Nenhuma delas impede o erro — apenas encurtam o tempo até desfazê-lo.
+
+**Atualização depois da correção de segurança de 27/08:** o núcleo ganhou a
+**Regra 1c** — nunca instruir, sugerir, lembrar ou perguntar sobre tomar, ajustar,
+atrasar ou pular medicamento. Ela entrou porque o modelo, em produção, mandou uma
+pessoa real tomar o remédio dela e depois negou ter mandado. Editar o núcleo pela
+interface passa a significar poder apagar **essa** regra.
+
+O que sustenta a decisão mesmo assim: aquela correção deixou **duas camadas**, e só
+uma delas é editável. A segunda é `src/conversa/seguranca.js`, um bloqueio
+determinístico que varre a resposta do modelo antes do envio e **não passa por
+`prompts_versionados`** — apagar a Regra 1c pela tela degrada a primeira camada e
+não toca na segunda.
+
+Isso vira requisito, não confiança: a segunda camada SHALL NOT ser editável pela
+interface. Quem quiser mexer nela mexe no código, com revisão e teste.
 
 **O teste de mensagem tem custo real por clique.** É a primeira funcionalidade do
 admin que gasta dinheiro por uso. Ver a pergunta (c).

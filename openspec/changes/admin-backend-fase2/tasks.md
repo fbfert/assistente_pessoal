@@ -40,6 +40,9 @@
 - [ ] 3.5 Recusar núcleo vazio
 - [ ] 3.6 Testes: semente idêntica ao código de hoje, edição alcançando o bot,
       confirmação reforçada sendo exigida, reversão
+- [ ] 3.7 A verificação determinística de medicação (`src/conversa/seguranca.js`)
+      NÃO entra no conteúdo versionado — teste que falha se virar chave editável, e
+      que o bloqueio continua de pé com o núcleo fixo esvaziado
 
 ## 4. Tela de Gatilhos
 
@@ -76,9 +79,12 @@
 
 ## 7. Debounce
 
-- [ ] 7.1 `src/whatsapp/debounce.js` com buffer por participante
+- [ ] 7.1 `src/whatsapp/debounce.js` com buffer por participante — no ADAPTADOR do
+      WhatsApp, não no núcleo: é comportamento de transporte, como a transcrição
 - [ ] 7.2 Zero significa processar na hora; é o padrão
 - [ ] 7.3 Só para anamnese concluída — a anamnese não passa pelo buffer
+- [ ] 7.7 O canal web NÃO passa pelo buffer: a rota é requisição-resposta, e o
+      cliente já serializa os envios. Teste que falha se o núcleo ganhar o agrupamento
 - [ ] 7.4 Áudio transcrito e incorporado na ordem de chegada
 - [ ] 7.5 **Sem** persistência: documentar no README que mensagens em buffer se
       perdem se o bot reiniciar dentro da janela
