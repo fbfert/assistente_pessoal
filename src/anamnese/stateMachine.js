@@ -11,6 +11,7 @@ import {
   VERSAO_CONSENTIMENTO,
   MARCAS_INTERNAS_DE_ANAMNESE,
 } from './questions.js'
+import { perguntaVigente, consentimentoVigente } from '../db/conteudoRepo.js'
 import {
   perguntaEscolhaPersonalidade,
   mapearRespostaPersonalidade,
@@ -99,7 +100,25 @@ const registrarInteracao = (tipoInteracao, texto) => ({
 /** Texto da pergunta de um estado, já com o pedido de exemplo quando for o caso. */
 export function perguntaDoEstado(estado) {
   if (estado === ESTADOS.PERSONALIDADE) return perguntaEscolhaPersonalidade()
-  return PERGUNTAS[estado]?.texto ?? null
+  if (!PERGUNTAS[estado]) return null
+
+  // Texto do conteúdo versionado, com a constante como padrão de fábrica. A
+  // pureza da máquina de estados não muda: isto é leitura de conteúdo, não de
+  // estado do participante.
+  try {
+    return perguntaVigente(estado) || PERGUNTAS[estado].texto
+  } catch {
+    return PERGUNTAS[estado].texto
+  }
+}
+
+/** Texto de consentimento vigente, com a constante como padrão de fábrica. */
+export function textoDeConsentimento() {
+  try {
+    return consentimentoVigente() || TEXTO_CONSENTIMENTO
+  } catch {
+    return TEXTO_CONSENTIMENTO
+  }
 }
 
 /**
@@ -159,7 +178,7 @@ function processarConsentimento(texto) {
   // Qualquer outra coisa: repete o pedido. Não interpreta, não deduz.
   return plano([
     'Só preciso de um "sim" ou "não" pra essa parte — é o registro do teu consentimento.',
-    TEXTO_CONSENTIMENTO,
+    textoDeConsentimento(),
   ])
 }
 

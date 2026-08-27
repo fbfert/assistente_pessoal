@@ -6,13 +6,13 @@
 ## 1. Schema e repositórios
 
 - [x] 1.1 Tabelas `config_global` e `config_historico`
-- [ ] 1.2 Tabelas `prompts_versionados` e `prompts_historico`
+- [x] 1.2 Tabelas `prompts_versionados` e `prompts_historico`
 - [x] 1.3 Reconfirmar o estado do banco antes de recriar — conferido na hora antes do
       deploy: WhatsApp não pareado, 28 linhas de auditoria e 121 de histórico; depois
       da migração de CHECK, as mesmas 28 e 121, com o índice preservado
 - [x] 1.4 `src/db/configRepo.js`: ler, gravar, listar histórico, reverter
-- [ ] 1.5 `src/db/conteudoRepo.js`: idem, para texto longo
-- [ ] 1.6 Semente na primeira leitura, a partir da constante do código
+- [x] 1.5 `src/db/conteudoRepo.js`: idem, para texto longo
+- [x] 1.6 Semente na primeira leitura, a partir da constante do código
 - [x] 1.7 Restaurar padrão de fábrica volta à constante, não à linha mais antiga
 - [x] 1.8 Cache com validação por `MAX(atualizado_em)` — o bot e o admin são
       processos separados, e cache invalidado só na escrita deixaria o bot com o
@@ -34,15 +34,15 @@
 
 ## 3. Conteúdo versionado
 
-- [ ] 3.1 Chaves: núcleo, três variantes, três mensagens de gatilho, uma por
+- [x] 3.1 Chaves: núcleo, três variantes, três mensagens de gatilho, uma por
       pergunta da anamnese, texto de consentimento
-- [ ] 3.2 `prompts.js`, `messages.js` e `questions.js` lendo do banco
-- [ ] 3.3 Fallback para a constante — nunca system prompt sem núcleo
-- [ ] 3.4 Confirmação reforçada do núcleo: palavra digitada em segunda etapa
-- [ ] 3.5 Recusar núcleo vazio
-- [ ] 3.6 Testes: semente idêntica ao código de hoje, edição alcançando o bot,
+- [x] 3.2 `prompts.js`, `messages.js` e `questions.js` lendo do banco
+- [x] 3.3 Fallback para a constante — nunca system prompt sem núcleo
+- [x] 3.4 Confirmação reforçada do núcleo: palavra digitada em segunda etapa
+- [x] 3.5 Recusar núcleo vazio
+- [x] 3.6 Testes: semente idêntica ao código de hoje, edição alcançando o bot,
       confirmação reforçada sendo exigida, reversão
-- [ ] 3.7 A verificação determinística de medicação (`src/conversa/seguranca.js`)
+- [x] 3.7 A verificação determinística de medicação (`src/conversa/seguranca.js`)
       NÃO entra no conteúdo versionado — teste que falha se virar chave editável, e
       que o bloqueio continua de pé com o núcleo fixo esvaziado
 

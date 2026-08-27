@@ -1,5 +1,6 @@
 import { SEM_INFORMACAO } from '../constants.js'
 import { normalizar } from '../text.js'
+import { nucleoFixoVigente, varianteVigente } from '../db/conteudoRepo.js'
 
 /**
  * NÚCLEO FIXO — as 8 regras de sistema que valem para as TRÊS personalidades.
@@ -143,11 +144,21 @@ function dataCurta(iso) {
  */
 export function montarSystemPrompt(usuario, remedios = [], notas = {}) {
   const escolhida = VARIANTES[usuario?.personalidade] ? usuario.personalidade : PERSONALIDADE_PADRAO
-  return [
-    NUCLEO_FIXO,
-    VARIANTES[escolhida],
-    montarContextoAnamnese(usuario, remedios, notas),
-  ].join('\n\n')
+
+  // Núcleo e variante vêm do conteúdo versionado, com a constante deste arquivo
+  // como padrão de fábrica. Se a leitura falhar por qualquer motivo, cai na
+  // constante: system prompt sem núcleo é pior que qualquer coisa que possa dar
+  // errado no banco.
+  let nucleo = NUCLEO_FIXO
+  let variante = VARIANTES[escolhida]
+  try {
+    nucleo = nucleoFixoVigente() || NUCLEO_FIXO
+    variante = varianteVigente(escolhida) || VARIANTES[escolhida]
+  } catch (e) {
+    console.warn('[prompts] conteúdo versionado indisponível; usando o padrão:', e?.message ?? e)
+  }
+
+  return [nucleo, variante, montarContextoAnamnese(usuario, remedios, notas)].join('\n\n')
 }
 
 /** Prompt de extração de remédio. Reforça a Regra 1b e exige JSON estrito. */

@@ -260,3 +260,33 @@ CREATE TABLE IF NOT EXISTS config_historico (
 
 CREATE INDEX IF NOT EXISTS idx_config_historico_chave
   ON config_historico (chave, alterado_em);
+
+-- Conteúdo versionado: TEXTO LONGO do produto -- núcleo fixo, variantes de tom,
+-- mensagens de gatilho, perguntas da anamnese, consentimento.
+--
+-- Separado de config_global porque as validações não se comparam: lá é faixa
+-- numérica e formato de horário; aqui é presença, tamanho e marcador obrigatório.
+-- Uma tabela única precisaria de uma coluna `tipo` significando coisas diferentes.
+--
+-- A constante do código continua sendo o PADRÃO DE FÁBRICA: restaurar volta a ela,
+-- e não à linha mais antiga do histórico, que já pode ser uma edição.
+CREATE TABLE IF NOT EXISTS prompts_versionados (
+  chave          TEXT    PRIMARY KEY,
+  conteudo       TEXT    NOT NULL,
+  atualizado_em  TEXT    NOT NULL DEFAULT (datetime('now')),
+  atualizado_por INTEGER REFERENCES admin_usuarios(admin_id)
+);
+
+-- Append-only, espelhando config_historico. Tabelas separadas de propósito: uma
+-- só exigiria um discriminador de origem, e duas chaves homônimas de origens
+-- diferentes se confundiriam.
+CREATE TABLE IF NOT EXISTS prompts_historico (
+  historico_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  chave           TEXT    NOT NULL,
+  conteudo_antigo TEXT,
+  alterado_em     TEXT    NOT NULL DEFAULT (datetime('now')),
+  alterado_por    INTEGER REFERENCES admin_usuarios(admin_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompts_historico_chave
+  ON prompts_historico (chave, alterado_em);
