@@ -278,6 +278,59 @@ describe('migração de banco existente', () => {
     antigo.close()
     rmSync(caminho, { force: true })
   })
+
+  /**
+   * O caso específico da base de técnicas: um banco que JÁ tem a lista de tipos
+   * anterior — inclusive `aprendizado_perfil` — ainda precisa ganhar
+   * `tecnica_sugerida`. É o que o sentinela da migração garante.
+   */
+  test('banco com a lista anterior ainda ganha tecnica_sugerida, sem perder linha', () => {
+    const caminho = join(dir, 'tipos.sqlite')
+    const antigo = new Database(caminho)
+    antigo.exec(`
+      CREATE TABLE usuarios (
+        usuario_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero_whatsapp TEXT NOT NULL UNIQUE,
+        anamnese_estado INTEGER NOT NULL DEFAULT 0,
+        data_nascimento TEXT
+      );
+      CREATE TABLE historico_interacoes (
+        interacao_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario_id INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+        tipo TEXT NOT NULL CHECK (tipo IN ('anamnese', 'mensagem_enviada', 'aprendizado_perfil')),
+        timestamp TEXT NOT NULL,
+        texto TEXT,
+        gatilho_relacionado TEXT,
+        canal TEXT NOT NULL DEFAULT 'whatsapp' CHECK (canal IN ('whatsapp', 'web'))
+      );
+      INSERT INTO usuarios (numero_whatsapp) VALUES ('+5511900000000');
+      INSERT INTO historico_interacoes (usuario_id, tipo, timestamp, texto)
+        VALUES (1, 'anamnese', '2026-01-01T00:00:00Z', 'uma'),
+               (1, 'mensagem_enviada', '2026-01-01T00:01:00Z', 'duas');
+    `)
+
+    const antes = antigo.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
+    migrar(antigo)
+
+    assert.equal(antigo.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n, antes)
+
+    antigo
+      .prepare(
+        `INSERT INTO historico_interacoes (usuario_id, tipo, timestamp, texto)
+              VALUES (1, 'tecnica_sugerida', '2026-01-01T00:02:00Z', 'oferecida')`,
+      )
+      .run()
+
+    assert.equal(antigo.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n, antes + 1)
+    assert.deepEqual(migrar(antigo), [], 'a segunda passada não altera nada')
+
+    // O índice composto tem de sobreviver à recriação da tabela.
+    const indices = antigo.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all()
+    assert.ok(indices.some((i) => i.name === 'idx_historico_usuario_timestamp'))
+
+    antigo.close()
+    rmSync(caminho, { force: true })
+  })
 })
 
 // =============================================================================
@@ -446,5 +499,161 @@ describe('remédio dito na conversa livre', () => {
 
     assert.equal(chamou, false, 'no estado 2 isso é resposta de anamnese, não remédio')
     assert.equal(repo.listarRemedios(u.usuario_id, db).length, 0)
+  })
+})
+
+// =============================================================================
+
+describe('núcleo: técnica prática no contexto', () => {
+  /** Captura o system prompt que o núcleo montou para a chamada de resposta. */
+  const espiao = () => {
+    const visto = { prompt: null, chamadas: 0 }
+    const chamar = async ({ systemPrompt }) => {
+      visto.prompt = systemPrompt
+      visto.chamadas++
+      return 'resposta do modelo'
+    }
+    return { visto, chamar }
+  }
+
+  const tecnicaFalsa = {
+    tecnica_id: 77,
+    tema: 'iniciar_tarefa',
+    titulo: 'Primeiro passo de dois minutos',
+    texto: 'Faça só a parte que cabe em dois minutos.',
+  }
+
+  test('a técnica encontrada entra no system prompt', async () => {
+    const u = participante()
+    const { visto, chamar } = espiao()
+
+    await processar(u, 'não consigo começar', CANAIS.WEB, {
+      chamar,
+      buscarTecnica: () => tecnicaFalsa,
+    })
+
+    assert.match(visto.prompt, /TÉCNICA DISPONÍVEL \(opcional/)
+    assert.match(visto.prompt, /Faça só a parte que cabe em dois minutos\./)
+  })
+
+  test('sem técnica, o prompt não menciona a lacuna', async () => {
+    const u = participante()
+    const { visto, chamar } = espiao()
+
+    await processar(u, 'não consigo começar', CANAIS.WEB, { chamar, buscarTecnica: () => null })
+
+    // A regra 3b do núcleo fixo fala de técnica em termos condicionais e continua
+    // presente — o que não pode existir é o BLOCO com uma técnica concreta.
+    assert.ok(
+      !visto.prompt.includes('TÉCNICA DISPONÍVEL (opcional'),
+      'nenhum bloco de técnica no prompt',
+    )
+  })
+
+  test('nunca entra mais de uma técnica: a busca devolve UMA', async () => {
+    const u = participante()
+    const { visto, chamar } = espiao()
+
+    await processar(u, 'travei', CANAIS.WEB, { chamar, buscarTecnica: () => tecnicaFalsa })
+
+    const ocorrencias = visto.prompt.match(/TÉCNICA DISPONÍVEL \(opcional/g) ?? []
+    assert.equal(ocorrencias.length, 1)
+  })
+
+  test('a injeção fica registrada, e o texto diz que é oferta ao modelo', async () => {
+    const u = participante()
+
+    await processar(u, 'não consigo começar', CANAIS.WEB, { buscarTecnica: () => tecnicaFalsa })
+
+    const linhas = listarInteracoes(u.usuario_id, db).filter(
+      (l) => l.tipo === TIPOS_INTERACAO.TECNICA_SUGERIDA,
+    )
+
+    assert.equal(linhas.length, 1)
+    assert.match(linhas[0].texto, /oferecida ao modelo/)
+    assert.match(linhas[0].texto, /#77/)
+  })
+
+  test('sem técnica não há linha de técnica no histórico', async () => {
+    const u = participante()
+
+    await processar(u, 'oi', CANAIS.WEB, { buscarTecnica: () => null })
+
+    const linhas = listarInteracoes(u.usuario_id, db).filter(
+      (l) => l.tipo === TIPOS_INTERACAO.TECNICA_SUGERIDA,
+    )
+    assert.equal(linhas.length, 0)
+  })
+
+  test('falha na busca não impede a resposta', async () => {
+    const u = participante()
+
+    const r = await processar(u, 'travei', CANAIS.WEB, {
+      buscarTecnica: () => {
+        throw new Error('banco caiu')
+      },
+    })
+
+    assert.equal(r.respondeu, true)
+    assert.equal(r.tecnica, null)
+    assert.deepEqual(respostas, ['resposta do modelo'])
+  })
+
+  test('anamnese não recebe técnica', async () => {
+    const u = participante(ESTADOS.O_QUE_TRAVA)
+    let buscou = false
+
+    await processar(u, 'não consigo começar nada', CANAIS.WEB, {
+      buscarTecnica: () => {
+        buscou = true
+        return tecnicaFalsa
+      },
+    })
+
+    assert.equal(buscou, false, 'no meio da anamnese a pergunta é fixa — não há o que sugerir')
+  })
+
+  test('a rede de segurança de medicação continua valendo com técnica injetada', async () => {
+    const u = participante()
+    repo.registrarHorarioDeRemedio(u.usuario_id, 'Ritalina', '08:00', db)
+
+    const r = await processar(u, 'travei hoje', CANAIS.WEB, {
+      chamar: async () => 'Comece pela Ritalina agora.',
+      buscarTecnica: () => tecnicaFalsa,
+    })
+
+    assert.equal(r.bloqueada, true, 'a técnica não abre exceção para a regra 1c')
+    assert.ok(
+      listarInteracoes(u.usuario_id, db).some(
+        (l) => l.tipo === TIPOS_INTERACAO.RESPOSTA_BLOQUEADA_SEGURANCA,
+      ),
+    )
+  })
+
+  test('a busca de verdade acha técnica publicada pelo tema, nos dois canais', async () => {
+    const tec = await import('../src/conhecimento/tecnicasRepo.js')
+    const criada = tec.criar(
+      {
+        tema: 'iniciar_tarefa',
+        titulo: 'Só o começo',
+        texto: 'Comece pela parte menor.',
+        fonte: 'teste',
+      },
+      null,
+      db,
+    )
+    tec.publicar(criada.tecnica_id, null, db)
+
+    for (const canal of [CANAIS.WEB, CANAIS.WHATSAPP]) {
+      const u = participante()
+      const { visto, chamar } = espiao()
+
+      // Sem `buscarTecnica`: o caminho real, com classificação e banco.
+      await processar(u, 'não consigo começar hoje', canal, { chamar })
+
+      assert.match(visto.prompt, /Comece pela parte menor\./, `falhou no canal ${canal}`)
+    }
+
+    db.exec('DELETE FROM tecnicas')
   })
 })

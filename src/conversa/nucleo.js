@@ -16,6 +16,9 @@ import { extrairRemedios, temIndicioDeRemedio } from '../anamnese/extrairRemedio
 import { extrairAprendizado } from '../anamnese/aprenderPerfil.js'
 import * as notasRepo from '../db/notasRepo.js'
 import { classificarMensagem } from '../classify/heuristic.js'
+import { identificarTema } from '../conhecimento/classificarTema.js'
+import { taxonomia } from '../conhecimento/temasRepo.js'
+import { escolherParaTema } from '../conhecimento/tecnicasRepo.js'
 import { montarSystemPrompt } from '../llm/prompts.js'
 import { chamarLLM } from '../llm/router.js'
 
@@ -60,13 +63,20 @@ export async function processarMensagem({ usuario, texto, canal, responder }, de
   const chamar = deps.chamar ?? chamarLLM
   const extrair = deps.extrair ?? extrairRemedios
   const aprender = deps.aprender ?? extrairAprendizado
+  const buscarTecnica = deps.buscarTecnica ?? buscarTecnicaDoBanco
   const db = deps.db
 
   if (usuario.anamnese_estado < ESTADOS.CONCLUIDO) {
     return passoDeAnamnese(usuario, texto, canal, responder, { extrair, db })
   }
 
-  return conversaLivre(usuario, texto, canal, responder, { chamar, extrair, aprender, db })
+  return conversaLivre(usuario, texto, canal, responder, {
+    chamar,
+    extrair,
+    aprender,
+    buscarTecnica,
+    db,
+  })
 }
 
 /**
@@ -97,7 +107,13 @@ async function passoDeAnamnese(usuario, texto, canal, responder, { extrair, db }
   }
 }
 
-async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair, aprender, db }) {
+async function conversaLivre(
+  usuario,
+  texto,
+  canal,
+  responder,
+  { chamar, extrair, aprender, buscarTecnica, db },
+) {
   const ultimoGatilho = ultimoGatilhoDisparado(usuario.usuario_id, db)
   const classe = classificarMensagem(new Date(), ultimoGatilho, config.respostaGatilhoJanelaMin)
   const gatilhoTipo = ultimoGatilho?.gatilho_relacionado ?? null
@@ -125,7 +141,13 @@ async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair
 
   const remedios = repo.listarRemedios(usuario.usuario_id, db)
   const notas = notasRepo.notasAtivasPorCampo(usuario.usuario_id, db)
-  const systemPrompt = montarSystemPrompt(usuario, remedios, notas)
+
+  // A técnica é buscada ANTES da chamada, e não junto com as outras duas: o
+  // resultado dela entra no prompt DESTA chamada, então não há o que
+  // paralelizar. É consulta local a SQLite com índice — microssegundos, não rede.
+  const tecnica = escolherTecnica(usuario, texto, canal, { buscarTecnica, db })
+
+  const systemPrompt = montarSystemPrompt(usuario, remedios, notas, tecnica)
 
   // As TRÊS chamadas saem JUNTAS. A resposta não espera nenhuma das outras duas:
   // reconhecer no mesmo turno exigiria série, dobrando o tempo até qualquer
@@ -184,7 +206,53 @@ async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair
     respondeu: Boolean(resposta),
     remediosGravados: gravados.length,
     aprendeu: Boolean(aprendido),
+    tecnica: tecnica?.tecnica_id ?? null,
   }
+}
+
+/**
+ * A técnica prática que entra no contexto desta resposta — no máximo UMA.
+ *
+ * Uma vira sugestão; duas viram cardápio, que é o oposto da regra de ouro do
+ * input mínimo. Quem não consegue começar uma tarefa não vai escolher entre três
+ * métodos de começar.
+ *
+ * Sem tema identificado, ou sem técnica publicada naquele tema, devolve null e a
+ * conversa segue exatamente como antes desta mudança — inclusive sem mencionar a
+ * lacuna para a pessoa. Enquanto ninguém tiver curado conteúdo, a base é inerte.
+ *
+ * Falha aqui NUNCA impede a resposta: uma sugestão que não veio é um detalhe;
+ * uma pessoa sem resposta, não.
+ */
+function escolherTecnica(usuario, texto, canal, { buscarTecnica, db }) {
+  try {
+    const tecnica = buscarTecnica(texto, db)
+    if (!tecnica) return null
+
+    // O registro é da INJEÇÃO no contexto, não da entrega: o sistema sabe o que
+    // ofereceu ao modelo e não tem como afirmar que ele usou. O texto diz isso
+    // com todas as letras, para ninguém ler a linha como prova do contrário.
+    registrar(
+      {
+        usuarioId: usuario.usuario_id,
+        tipo: TIPOS_INTERACAO.TECNICA_SUGERIDA,
+        texto: `oferecida ao modelo: "${tecnica.titulo}" (#${tecnica.tecnica_id}, ${tecnica.tema})`,
+        canal,
+      },
+      db,
+    )
+
+    return tecnica
+  } catch (e) {
+    console.error('[conversa] falha ao buscar técnica:', e?.message ?? e)
+    return null
+  }
+}
+
+/** A busca de verdade. Injetável para que o teste do núcleo não abra SQLite. */
+function buscarTecnicaDoBanco(texto, db) {
+  const tema = identificarTema(texto, taxonomia(db))
+  return tema ? escolherParaTema(tema, db) : null
 }
 
 /**

@@ -20,6 +20,8 @@ REGRAS DE SISTEMA (valem sempre, em qualquer personalidade, sem exceção):
 
 3. Foco na ação mínima seguinte, não em plano longo. Uma coisa, agora, pequena o bastante para caber num dia ruim. Não monte cronograma, não proponha rotina de sete etapas. TOMAR REMÉDIO NUNCA É UMA AÇÃO QUE VOCÊ SUGERE — nem como "ação mínima", nem como primeiro passo, nem como lembrete disfarçado. A regra 1c vale acima desta.
 
+3b. Às vezes o contexto abaixo traz uma TÉCNICA DISPONÍVEL. Ela é uma opção, não um roteiro. Use no máximo uma, e só se ela couber naturalmente no que a pessoa acabou de dizer — dita com as palavras da conversa, nunca recitada. Se não couber, ignore: responder sem ela é melhor que encaixá-la à força. Nunca liste mais de uma, nunca a apresente como orientação clínica, e nunca diga que ela veio de uma base. Se a pessoa estiver em crise ou sobrecarga, a regra 5 vale acima desta — ali se pede menos, não se ensina método.
+
 4. Use o vocabulário próprio que a pessoa te ensinou — apelidos para tarefas, gírias, o jeito dela de nomear as coisas. Falar a língua dela é parte do trabalho.
 
 5. Se a pessoa relatar crise ou sobrecarga, REDUZA a exigência da conversa. Menos pergunta, frase mais curta, permissão explícita para não responder. Nesses momentos, presença silenciosa ajuda mais que pergunta direta.
@@ -142,7 +144,7 @@ function dataCurta(iso) {
  * System prompt final: núcleo fixo + variante da personalidade + contexto da anamnese.
  * Personalidade ausente ou desconhecida cai no padrão, em vez de quebrar a conversa.
  */
-export function montarSystemPrompt(usuario, remedios = [], notas = {}) {
+export function montarSystemPrompt(usuario, remedios = [], notas = {}, tecnica = null) {
   const escolhida = VARIANTES[usuario?.personalidade] ? usuario.personalidade : PERSONALIDADE_PADRAO
 
   // Núcleo e variante vêm do conteúdo versionado, com a constante deste arquivo
@@ -158,7 +160,26 @@ export function montarSystemPrompt(usuario, remedios = [], notas = {}) {
     console.warn('[prompts] conteúdo versionado indisponível; usando o padrão:', e?.message ?? e)
   }
 
-  return [nucleo, variante, montarContextoAnamnese(usuario, remedios, notas)].join('\n\n')
+  return [nucleo, variante, montarContextoAnamnese(usuario, remedios, notas), blocoDaTecnica(tecnica)]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/**
+ * O bloco da técnica só existe quando HÁ técnica.
+ *
+ * Sem isso, todo prompt carregaria um parágrafo sobre uma seção vazia — e o dia
+ * zero desta mudança deixaria de ser idêntico ao dia anterior, que é a garantia
+ * de que a base sobe inerte enquanto ninguém publicou nada.
+ *
+ * O texto é deliberadamente permissivo. Instrução de sempre usar produziria
+ * resposta pior que a de hoje: encaixada à força.
+ */
+export function blocoDaTecnica(tecnica) {
+  if (!tecnica?.texto) return ''
+
+  return `TÉCNICA DISPONÍVEL (opcional — use no máximo esta uma, e só se couber):
+${tecnica.titulo ? `${tecnica.titulo}: ` : ''}${tecnica.texto}`
 }
 
 /** Prompt de extração de remédio. Reforça a Regra 1b e exige JSON estrito. */

@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from '../config.js'
 import { migrar } from './migracoes.js'
+import { semearBase } from '../conhecimento/tecnicasRepo.js'
+import { atualizarSeedsNaoEditados } from './conteudoRepo.js'
 
 const AQUI = dirname(fileURLToPath(import.meta.url))
 const SCHEMA_PATH = join(AQUI, 'schema.sql')
@@ -52,8 +54,21 @@ export function abrirDb(caminho = config.db.path) {
   // tabela existente só entra por aqui — ver migracoes.js.
   migrar(db)
 
+  // Semente da base de técnicas: os sete temas e os exemplos em rascunho.
+  // Idempotente e sem sobrescrever — quem editar as palavras-gatilho não perde
+  // o trabalho na próxima subida do container. Nada aqui entra publicado.
+  semearBase(db)
+
+  // A instância é publicada ANTES do próximo passo: ele lê conteúdo versionado,
+  // e um `getDb()` re-entrante aqui reabriria o banco no meio da abertura.
   instancia = db
   caminhoAberto = caminho
+
+  // Conteúdo de fábrica que mudou no código alcança o banco JÁ SEMEADO — mas só
+  // onde o operador nunca escreveu. Sem isto, uma regra nova do núcleo fixo
+  // ficaria no repositório e nunca na conversa.
+  atualizarSeedsNaoEditados(db)
+
   return db
 }
 

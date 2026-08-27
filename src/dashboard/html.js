@@ -47,6 +47,13 @@ const ESTILO = `
   button { padding: .4rem .8rem; font: inherit; cursor: pointer; border: 1px solid var(--borda); background: #f4f4f4; }
   button.perigo { border-color: var(--alerta); color: var(--alerta); font-weight: 700; }
   .aviso { border-left: 4px solid var(--alerta); background: var(--alerta-bg); color: var(--alerta); padding: .7rem 1rem; margin: 1rem 0; }
+  .etiqueta { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em;
+              border: 1px solid var(--borda); padding: .05rem .35rem; margin-left: .4rem; }
+  .etiqueta.publicada { border-color: var(--ok, #1a7f37); color: var(--ok, #1a7f37); }
+  .etiqueta.arquivada { color: var(--suave); }
+  section.tema { margin: 1.5rem 0; }
+  details.tecnica { border-left: 2px solid var(--borda); padding-left: .8rem; margin: .5rem 0; }
+  summary { cursor: pointer; }
   .historico td { font-size: .88rem; }
   .historico .texto { white-space: pre-wrap; }
   code { background: #f4f4f4; padding: .1rem .3rem; }
@@ -65,6 +72,7 @@ export function pagina(titulo, corpo, { nav = true, cabeca = '' } = {}) {
          <a href="/">Painel</a>
          <a href="/gatilhos">Gatilhos</a>
          <a href="/ia">IA e persona</a>
+         <a href="/tecnicas">Técnicas</a>
          <a href="/conexao">Conexão</a>
          <a href="/credenciais">Credenciais</a>
          <a href="/admins">Administradores</a>

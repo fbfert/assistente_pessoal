@@ -239,6 +239,7 @@ com **ele**, não que alguém trocou de senha. Tecnicamente também não caberia
 | `/conta` | Trocar a própria senha |
 | `/conexao` | Estado do WhatsApp e QR |
 | `/credenciais` | Chave, modelo e provedor ativo de cada LLM, mais o modelo de transcrição |
+| `/tecnicas` | Base de técnicas práticas: temas, palavras-gatilho, curadoria |
 | `/login` | Entrada |
 
 ### Credenciais de LLM: chave, modelo e provedor ativo
@@ -530,6 +531,83 @@ viva. Vale **só no WhatsApp** e **só no chat livre**:
 > de poucos segundos, as mensagens acumuladas se perdem. É limitação aceita por
 > decisão registrada: persistir custaria uma escrita no caminho quente de toda
 > mensagem para cobrir um evento raro.
+
+### A base de técnicas práticas
+
+Sem conteúdo concreto, o assistente responde sempre a mesma forma vazia: *"que tal
+escolher uma coisa pequena e começar por ela?"*. Está correto e não diz **qual**
+coisa, nem **como**.
+
+Isso não é só uma resposta morna. Na primeira sessão real do piloto a pessoa
+escreveu "Não sei, o que propõe?", o modelo não tinha nada concreto para oferecer
+e foi buscar a única coisa específica que enxergava no contexto: o remédio dela.
+**A falta de matéria-prima é o que empurra o modelo para os cantos errados.**
+
+A base é uma lista curada de técnicas curtas e aplicáveis, ligadas a temas do dia
+a dia executivo.
+
+#### O limite, que é o mais importante
+
+Só técnica **prática e organizacional**: quebrar tarefa, foco, tempo, ambiente,
+sono. **Nunca** conteúdo psicoeducativo ou clínico sobre TDAH, autismo ou qualquer
+diagnóstico — é o que mantém a Regra 1 do núcleo fixo ("nunca terapeuta") intacta
+enquanto a base cresce.
+
+O sistema **não gera técnica**. Nenhuma chamada de modelo escreve, completa ou
+sugere conteúdo aqui. Toda técnica tem uma `fonte` obrigatória, e o que ela diz é
+responsabilidade de quem curou — o sistema só entrega o que foi aprovado.
+
+#### Rascunho → publicada
+
+| Status | O que significa |
+|---|---|
+| `rascunho` | Existe no banco e **não chega a ninguém**. É onde toda técnica nasce. |
+| `publicada` | Pode entrar na conversa de quem cair naquele tema. |
+| `arquivada` | Saiu de circulação, **sem ser apagada** — o histórico aponta para ela. |
+
+Publicar e arquivar passam por confirmação em duas etapas. Se o texto contiver
+termo de aparência clínica (*tratamento*, *sintoma*, *transtorno*…), a página de
+confirmação **avisa e não bloqueia**: quem decide é quem cura. Bloquear por lista
+daria falsa garantia — "respiração" é prático, "técnica de respiração para
+ansiedade" não é, e nenhuma lista separa os dois.
+
+#### Como cadastrar
+
+1. Abra `/tecnicas`.
+2. Em **Nova técnica**, escolha o tema, escreva o título, o texto e a **fonte**
+   (obrigatória). Ela entra como rascunho.
+3. Releia e clique em **publicar**. A página de confirmação diz o efeito.
+
+Para criar tema novo ou ajustar palavras-gatilho, use os formulários da mesma
+tela. Editar palavras-gatilho passa por confirmação: tirar uma expressão faz as
+técnicas daquele tema pararem de aparecer para quem usa aquela palavra, **sem erro
+visível em lugar nenhum**.
+
+#### Como o TARS escolhe
+
+1. A mensagem é comparada com as palavras-gatilho de cada tema — comparação
+   determinística, **sem chamada de modelo e sem custo por mensagem**.
+2. Achando tema, sai **uma** técnica publicada dele: a **menos sugerida
+   recentemente**, com as nunca sugeridas na frente. Uma vira sugestão; duas
+   viram cardápio, que é o oposto da regra do input mínimo.
+3. Ela entra no contexto como **opção**. O modelo pode ignorá-la, e deve ignorá-la
+   se não couber ou se a pessoa estiver em sobrecarga.
+4. Fica a linha `tecnica_sugerida` no histórico — do que foi **oferecido ao
+   modelo**, não do que ele usou.
+
+Sem tema, ou sem técnica publicada no tema, a conversa se comporta exatamente como
+antes desta base existir. **O sistema sobe inerte:** as técnicas de exemplo que
+vêm de fábrica estão todas em rascunho, com `fonte = "exemplo — substituir"`, e
+servem só para você ver o formato.
+
+#### Os sete temas de fábrica
+
+`iniciar_tarefa`, `foco_distracao`, `gestao_tempo`, `ambiente_sensorial`, `sono`,
+`energia_fadiga`, `transicao_atividade`.
+
+Sobrecarga e crise **ficam de fora de propósito**: a Regra 5 do núcleo manda
+*reduzir* a exigência nesses momentos, e oferecer método ali trabalharia contra
+ela.
 
 ## Recriar o banco (só com o banco vazio)
 

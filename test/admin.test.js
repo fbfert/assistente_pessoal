@@ -1459,4 +1459,153 @@ describe('consentimento versionado', () => {
   })
 })
 
+describe('tela de técnicas', () => {
+  let tecRepo, temasRepo
+
+  before(async () => {
+    tecRepo = await import('../src/conhecimento/tecnicasRepo.js')
+    temasRepo = await import('../src/conhecimento/temasRepo.js')
+    cookie = await autenticar()
+  })
+
+  beforeEach(() => {
+    db.exec('DELETE FROM tecnicas; DELETE FROM temas_tecnicas;')
+    tecRepo.semearBase(db)
+  })
+
+  const criar = (dados = {}) =>
+    post('/tecnicas/nova', {
+      tema: 'iniciar_tarefa',
+      titulo: 'Uma técnica',
+      texto: 'Um texto qualquer.',
+      fonte: 'livro tal',
+      ...dados,
+    })
+
+  const porTitulo = (titulo) => tecRepo.listar({}, db).find((t) => t.titulo === titulo)
+
+  test('sem sessão, redireciona ao login', async () => {
+    const r = await cru('/tecnicas')
+    assert.equal(r.status, 302)
+    assert.match(r.headers.get('location'), /\/login/)
+  })
+
+  test('a tela avisa quando nada está publicado', async () => {
+    const html = await (await get('/tecnicas')).text()
+    assert.match(html, /Nenhuma técnica publicada/)
+    assert.match(html, /se comporta\s+exatamente como antes/)
+  })
+
+  test('criar entra sempre como rascunho', async () => {
+    await criar({ titulo: 'Recém-nascida' })
+    assert.equal(porTitulo('Recém-nascida').status, 'rascunho')
+  })
+
+  test('técnica sem fonte não salva', async () => {
+    const r = await criar({ titulo: 'Sem fonte', fonte: '' })
+
+    assert.equal(r.status, 400)
+    assert.match(await r.text(), /fonte é obrigatória/)
+    assert.equal(porTitulo('Sem fonte'), undefined)
+  })
+
+  test('tema fora da lista é recusado no SERVIDOR, mesmo contornando o select', async () => {
+    const r = await criar({ titulo: 'Tema torto', tema: 'inventado_no_curl' })
+
+    assert.equal(r.status, 400)
+    assert.match(await r.text(), /Tema desconhecido/)
+  })
+
+  test('publicar exige a página de confirmação, que não altera nada', async () => {
+    await criar({ titulo: 'A publicar' })
+    const id = porTitulo('A publicar').tecnica_id
+
+    const html = await (await get(`/tecnicas/${id}/publicar`)).text()
+    assert.match(html, /Publicar/)
+    assert.equal(porTitulo('A publicar').status, 'rascunho', 'o GET não pode publicar')
+
+    const r = await post(`/tecnicas/${id}/publicar`, {})
+    assert.equal(r.status, 302)
+    assert.equal(porTitulo('A publicar').status, 'publicada')
+  })
+
+  test('termo clínico avisa na confirmação, e ainda assim publica', async () => {
+    await criar({ titulo: 'Com termo', texto: 'fale com o psiquiatra sobre o tratamento' })
+    const id = porTitulo('Com termo').tecnica_id
+
+    const html = await (await get(`/tecnicas/${id}/publicar`)).text()
+    assert.match(html, /Atenção editorial/)
+    assert.match(html, /<strong>não impede<\/strong>/)
+
+    await post(`/tecnicas/${id}/publicar`, {})
+    assert.equal(porTitulo('Com termo').status, 'publicada', 'o aviso não bloqueia')
+  })
+
+  test('arquivar tira da busca ativa e mantém no banco', async () => {
+    await criar({ titulo: 'A arquivar' })
+    const id = porTitulo('A arquivar').tecnica_id
+    await post(`/tecnicas/${id}/publicar`, {})
+
+    const html = await (await get(`/tecnicas/${id}/arquivar`)).text()
+    assert.match(html, /não é apagada/)
+    assert.equal(porTitulo('A arquivar').status, 'publicada', 'o GET não pode arquivar')
+
+    await post(`/tecnicas/${id}/arquivar`, {})
+    assert.equal(porTitulo('A arquivar').status, 'arquivada')
+    assert.equal(tecRepo.publicadasPorTema('iniciar_tarefa', db).length, 0)
+    assert.ok(tecRepo.obter(id, db), 'continua existindo')
+  })
+
+  test('editar palavras-gatilho passa por confirmação', async () => {
+    const antes = temasRepo.obterTema('sono', db).palavras_gatilho
+
+    const html = await (
+      await post('/tecnicas/temas/sono/confirmar', { rotulo: 'Sono', palavras: 'nao durmo' })
+    ).text()
+
+    assert.match(html, /Como vai ficar/)
+    assert.equal(temasRepo.obterTema('sono', db).palavras_gatilho, antes, 'nada mudou ainda')
+
+    await post('/tecnicas/temas/sono', { rotulo: 'Sono', palavras: 'nao durmo' })
+    assert.equal(temasRepo.obterTema('sono', db).palavras_gatilho, 'nao durmo')
+  })
+
+  test('tema novo aparece no seletor da tela', async () => {
+    await post('/tecnicas/temas/novo', {
+      chave: 'tema_de_teste',
+      rotulo: 'Tema de teste',
+      palavras: 'expressao',
+    })
+
+    const html = await (await get('/tecnicas')).text()
+    assert.match(html, /Tema de teste/)
+  })
+
+  test('tema com técnica não é removido', async () => {
+    await criar({ titulo: 'Segura o tema' })
+    const r = await post('/tecnicas/temas/iniciar_tarefa/remover', {})
+
+    assert.equal(r.status, 400)
+    assert.ok(temasRepo.obterTema('iniciar_tarefa', db))
+  })
+
+  test('a navegação leva à tela', async () => {
+    const html = await (await get('/')).text()
+    assert.match(html, /href="\/tecnicas"/)
+  })
+
+  test('a escrita fica auditada com o autor', async () => {
+    const antes = db.prepare('SELECT COUNT(*) n FROM auditoria_admin').get().n
+    await criar({ titulo: 'Auditada' })
+
+    const linha = db
+      .prepare('SELECT * FROM auditoria_admin ORDER BY auditoria_id DESC LIMIT 1')
+      .get()
+
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM auditoria_admin').get().n, antes + 1)
+    assert.ok(linha.autor_id, 'a auditoria nomeia quem agiu')
+    assert.match(linha.descricao, /Auditada/)
+  })
+})
+
 const escaparRegex = (v) => String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

@@ -98,6 +98,17 @@ export const TIPOS_INTERACAO = Object.freeze({
    * confundi-los faria a linha do tempo mentir sobre quem agiu.
    */
   APRENDIZADO_PERFIL: 'aprendizado_perfil',
+  /**
+   * Uma técnica da base foi INJETADA no contexto de uma resposta.
+   *
+   * O registro é da injeção, não da entrega: o sistema sabe o que ofereceu ao
+   * modelo, e não tem como afirmar que ele usou. Ler esta linha como prova de
+   * que a pessoa recebeu aquela técnica seria conclusão que o dado não sustenta.
+   *
+   * É também o que alimenta o rodízio — sem saber quando cada técnica saiu, a
+   * escolha voltaria a repetir a mesma frase dias seguidos.
+   */
+  TECNICA_SUGERIDA: 'tecnica_sugerida',
 })
 
 /**

@@ -287,3 +287,46 @@ export function invalidar() {
   cache = null
   marcaLida = null
 }
+
+/**
+ * Atualiza o texto de fábrica das chaves que o operador NUNCA editou.
+ *
+ * O problema que isto resolve: a semente só entra na primeira leitura. Um banco
+ * que já semeou `nucleo_fixo` guarda o texto de então — e uma regra nova escrita
+ * na constante deste código jamais chegaria à conversa. Foi o caso da regra 3b,
+ * sobre a técnica opcional: sem isto, ela existiria no repositório e não no
+ * produto.
+ *
+ * O critério de "nunca editou" é a AUSÊNCIA de histórico para a chave. Toda
+ * escrita de operador passa por `escrever`, que grava histórico — então chave sem
+ * histórico é chave que só tem o valor de fábrica, e refrescá-la não apaga
+ * trabalho de ninguém. Chave com histórico é deixada em paz, sempre: quem
+ * reescreveu o núcleo fixo à mão não pode perdê-lo num deploy.
+ *
+ * @returns {string[]} as chaves atualizadas agora
+ */
+export function atualizarSeedsNaoEditados(db = getDb()) {
+  const atualizadas = []
+
+  const guardado = db.prepare('SELECT chave, conteudo FROM prompts_versionados').all()
+  const temHistorico = db.prepare('SELECT 1 FROM prompts_historico WHERE chave = ? LIMIT 1')
+  const gravar = db.prepare(
+    'UPDATE prompts_versionados SET conteudo = ?, atualizado_em = ? WHERE chave = ?',
+  )
+
+  for (const linha of guardado) {
+    const seed = catalogo()[linha.chave]
+    if (!seed || seed.conteudo === linha.conteudo) continue
+    if (temHistorico.get(linha.chave)) continue
+
+    gravar.run(seed.conteudo, new Date().toISOString(), linha.chave)
+    atualizadas.push(linha.chave)
+  }
+
+  if (atualizadas.length) {
+    invalidar()
+    console.log(`[conteudo] padrão de fábrica atualizado: ${atualizadas.join(', ')}`)
+  }
+
+  return atualizadas
+}

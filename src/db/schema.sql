@@ -103,7 +103,8 @@ CREATE TABLE IF NOT EXISTS historico_interacoes (
                                               'acao_admin', 'entrada_web',
                                               'mensagem_enviada',
                                               'resposta_bloqueada_seguranca',
-                                              'aprendizado_perfil')),
+                                              'aprendizado_perfil',
+                                              'tecnica_sugerida')),
   timestamp           TEXT    NOT NULL,
   texto               TEXT,
   -- Tipo do gatilho a que esta linha se refere (disparo, resposta ou silêncio).
@@ -290,3 +291,46 @@ CREATE TABLE IF NOT EXISTS prompts_historico (
 
 CREATE INDEX IF NOT EXISTS idx_prompts_historico_chave
   ON prompts_historico (chave, alterado_em);
+
+-- ---------------------------------------------------------------------------
+-- Base de técnicas práticas
+--
+-- Conteúdo curado por gente, não gerado pelo modelo: a base dá matéria-prima
+-- concreta para a Regra 3 ("ação mínima seguinte") em vez de deixar o modelo
+-- procurar sozinho o que sugerir. Só prático e organizacional — nada
+-- psicoeducativo ou clínico.
+-- ---------------------------------------------------------------------------
+
+-- Taxonomia. Fechada do ponto de vista da técnica (o tema vem desta lista,
+-- nunca de campo livre) e editável pelo operador: as palavras que as pessoas do
+-- piloto usam de verdade só aparecem lendo as conversas delas.
+CREATE TABLE IF NOT EXISTS temas_tecnicas (
+  chave             TEXT PRIMARY KEY,
+  rotulo            TEXT NOT NULL,
+  -- Uma expressão por linha. Tabela filha acrescentaria CRUD, ordenação e
+  -- deduplicação para uma lista sempre lida inteira; JSON acrescentaria uma
+  -- sintaxe que o operador teria de acertar a mão num textarea sem JavaScript.
+  palavras_gatilho  TEXT NOT NULL DEFAULT '',
+  criado_em         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tecnicas (
+  tecnica_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  tema               TEXT    NOT NULL REFERENCES temas_tecnicas(chave),
+  titulo             TEXT    NOT NULL,
+  texto              TEXT    NOT NULL,
+  -- De onde veio. Obrigatória: sem ela, daqui a seis meses ninguém sabe se a
+  -- técnica foi curada ou inventada.
+  fonte              TEXT    NOT NULL,
+  status             TEXT    NOT NULL DEFAULT 'rascunho'
+                             CHECK (status IN ('rascunho', 'publicada', 'arquivada')),
+  criado_em          TEXT    NOT NULL DEFAULT (datetime('now')),
+  aprovado_em        TEXT,
+  aprovado_por       INTEGER REFERENCES admin_usuarios(admin_id),
+  -- Nulo até a primeira vez. O rodízio trata nulo como o mais antigo possível,
+  -- para que técnica nova entre em circulação antes de repetir uma já usada.
+  ultima_sugerida_em TEXT
+);
+
+-- O par de toda consulta da conversa.
+CREATE INDEX IF NOT EXISTS idx_tecnicas_tema_status ON tecnicas (tema, status);
