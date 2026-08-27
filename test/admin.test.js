@@ -13,6 +13,7 @@ process.env.ADMIN_BOOTSTRAP_EMAIL = EMAIL
 
 let dir, db, servidor, base
 let repo, log, conexaoRepo, constantes, queries, admins
+let cfg, conteudo, montarMensagemGatilho
 
 before(async () => {
   const { abrirDb } = await import('../src/db/db.js')
@@ -24,6 +25,9 @@ before(async () => {
   conexaoRepo = await import('../src/db/estadoConexaoRepo.js')
   constantes = await import('../src/constants.js')
   queries = await import('../src/dashboard/queries.js')
+  cfg = await import('../src/db/configRepo.js')
+  conteudo = await import('../src/db/conteudoRepo.js')
+  ;({ montarMensagemGatilho } = await import('../src/triggers/messages.js'))
 
   admins = await import('../src/db/adminRepo.js')
   await admins.bootstrap({ email: EMAIL, senha: SENHA })
@@ -1060,5 +1064,141 @@ describe('limite de tentativas de login', () => {
     await errar()
 
     assert.ok(Date.now() - antes >= 900, 'a resposta de falha precisa vir freada')
+  })
+})
+
+describe('tela de gatilhos', () => {
+  before(async () => {
+    cookie = await autenticar()
+  })
+
+  test('mostra os três tipos e a contagem de quem tem cada um ativo', async () => {
+    const u = participante('+5511900000050')
+    repo.ativarGatilhosPadrao(u.usuario_id, db)
+
+    const html = await (await get('/gatilhos')).text()
+
+    assert.match(html, /Gatilhos/)
+    for (const rotulo of ['manhã', 'remédio', 'fim do dia']) {
+      assert.ok(html.includes(rotulo), `faltou o tipo ${rotulo}`)
+    }
+    // A contagem exibida tem de bater com o banco — outros testes deste arquivo
+    // também criam participantes, então o número não é fixo.
+    const ativos = db
+      .prepare("SELECT COUNT(*) n FROM gatilhos_configurados WHERE ativo = 1 AND tipo = 'checkin_manha'")
+      .get().n
+    assert.ok(ativos >= 1)
+    assert.match(html, new RegExp(`<strong>${ativos}</strong> participante\\(s\\)`))
+  })
+
+  test('a tabela por participante linka para a página de detalhe', async () => {
+    const u = participante('+5511900000051')
+
+    const html = await (await get('/gatilhos')).text()
+
+    assert.match(html, new RegExp(`<a href="/usuarios/${u.usuario_id}"`))
+    assert.match(html, /Só leitura aqui/)
+  })
+
+  test('editar o horário padrão grava e não retroage sobre quem já existe', async () => {
+    const antigo = participante('+5511900000052')
+    repo.ativarGatilhosPadrao(antigo.usuario_id, db)
+    const horarioDoAntigo = repo
+      .listarGatilhosUsuario(antigo.usuario_id, db)
+      .find((g) => g.tipo === 'checkin_manha').horario
+
+    const r = await post('/gatilhos/horario/HORARIO_PADRAO_CHECKIN', { valor: '09:15' })
+    assert.equal(r.status, 302)
+    assert.equal(cfg.ler('HORARIO_PADRAO_CHECKIN', db), '09:15')
+
+    assert.equal(
+      repo.listarGatilhosUsuario(antigo.usuario_id, db).find((g) => g.tipo === 'checkin_manha')
+        .horario,
+      horarioDoAntigo,
+      'quem já foi configurado mantém o horário dele',
+    )
+
+    // Mas quem chega agora nasce com o novo.
+    const novo = participante('+5511900000053')
+    repo.ativarGatilhosPadrao(novo.usuario_id, db)
+    assert.equal(
+      repo.listarGatilhosUsuario(novo.usuario_id, db).find((g) => g.tipo === 'checkin_manha')
+        .horario,
+      '09:15',
+    )
+
+    cfg.restaurarPadrao('HORARIO_PADRAO_CHECKIN', null, db)
+  })
+
+  test('horário inválido é recusado sem alterar nada', async () => {
+    const antes = cfg.ler('HORARIO_PADRAO_CHECKLIST', db)
+
+    const r = await post('/gatilhos/horario/HORARIO_PADRAO_CHECKLIST', { valor: '25:99' })
+
+    assert.equal(r.status, 400)
+    assert.equal(cfg.ler('HORARIO_PADRAO_CHECKLIST', db), antes)
+  })
+
+  test('editar mensagem passa por confirmação com o antes e o depois', async () => {
+    const r = await post('/gatilhos/mensagem/mensagem_checkin_manha/confirmar', {
+      conteudo: 'Bom dia. Como foi a noite?',
+    })
+
+    assert.equal(r.status, 200, 'a etapa intermediária não grava')
+    const html = await r.text()
+    assert.match(html, /Como está hoje/)
+    assert.match(html, /Como vai ficar/)
+    assert.match(html, /Bom dia. Como foi a noite\?/)
+
+    assert.notEqual(conteudo.ler('mensagem_checkin_manha', db), 'Bom dia. Como foi a noite?')
+  })
+
+  test('a segunda etapa grava, e o disparo passa a usar o texto novo', async () => {
+    const r = await post('/gatilhos/mensagem/mensagem_checkin_manha', {
+      conteudo: 'Bom dia. Como foi a noite?',
+    })
+
+    assert.equal(r.status, 302)
+    assert.equal(
+      montarMensagemGatilho('checkin_manha'),
+      'Bom dia. Como foi a noite?',
+      'a edição precisa alcançar o disparo',
+    )
+
+    await post('/gatilhos/mensagem/mensagem_checkin_manha/restaurar', {})
+  })
+
+  test('a mensagem de remédio não pode perder o marcador', async () => {
+    const r = await post('/gatilhos/mensagem/mensagem_remedio/confirmar', {
+      conteudo: 'Está na hora do seu remédio.',
+    })
+
+    assert.equal(r.status, 400)
+    assert.match(await r.text(), /\{remedio\}/)
+  })
+
+  test('a confirmação mostra como a pessoa vai ler o lembrete de remédio', async () => {
+    const html = await (
+      await post('/gatilhos/mensagem/mensagem_remedio/confirmar', {
+        conteudo: 'Ei — {remedio} agora.',
+      })
+    ).text()
+
+    assert.match(html, /Como a pessoa vai ler/)
+    assert.match(html, /Ei — Ritalina agora\./)
+  })
+
+  test('chave que não é de gatilho não entra por esta tela', async () => {
+    // O núcleo fixo é da tela de IA, e tem confirmação reforçada própria.
+    assert.equal(
+      (await post('/gatilhos/mensagem/nucleo_fixo/confirmar', { conteudo: 'x' })).status,
+      404,
+    )
+  })
+
+  test('exige sessão', async () => {
+    const r = await cru('/gatilhos')
+    assert.equal(r.status, 302)
+    assert.equal(r.headers.get('location'), '/login')
   })
 })

@@ -48,13 +48,13 @@
 
 ## 4. Tela de Gatilhos
 
-- [ ] 4.1 Os três tipos com horário padrão, mensagem e contagem de ativos
-- [ ] 4.2 Edição de horário e mensagem na própria tela
-- [ ] 4.3 Pré-visualização do texto final antes de salvar
-- [ ] 4.4 Nota explícita de que o padrão não retroage
-- [ ] 4.5 Tabela por participante, leitura, com link para o detalhe — sem duplicar
+- [x] 4.1 Os três tipos com horário padrão, mensagem e contagem de ativos
+- [x] 4.2 Edição de horário e mensagem na própria tela
+- [x] 4.3 Pré-visualização do texto final antes de salvar
+- [x] 4.4 Nota explícita de que o padrão não retroage
+- [x] 4.5 Tabela por participante, leitura, com link para o detalhe — sem duplicar
       o formulário que já existe lá
-- [ ] 4.6 Testes: contagem batendo com o banco, padrão não retroagindo, link válido
+- [x] 4.6 Testes: contagem batendo com o banco, padrão não retroagindo, link válido
 
 ## 5. Tela de IA / Persona
 

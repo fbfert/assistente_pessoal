@@ -83,3 +83,47 @@ export function esteira(db = getDb()) {
     concluidos: todos.filter((u) => u.concluiuAnamnese),
   }
 }
+
+/**
+ * Panorama dos gatilhos, para a visão de conjunto.
+ *
+ * Duas leituras separadas de propósito: a contagem por tipo responde "quanta
+ * gente isso alcança hoje", e a grade por participante responde "e a fulana,
+ * está com o quê?". Juntar as duas numa consulta só daria uma tabela que não
+ * serve bem a nenhuma das duas perguntas.
+ */
+export function panoramaDeGatilhos(db = getDb()) {
+  const ativosPorTipo = Object.fromEntries(
+    db
+      .prepare(
+        `SELECT tipo, COUNT(*) n
+           FROM gatilhos_configurados
+          WHERE ativo = 1
+       GROUP BY tipo`,
+      )
+      .all()
+      .map((l) => [l.tipo, l.n]),
+  )
+
+  const participantes = db
+    .prepare(
+      `SELECT u.usuario_id, u.nome, u.numero_whatsapp, u.pausado, u.anamnese_estado
+         FROM usuarios u
+     ORDER BY u.usuario_id`,
+    )
+    .all()
+
+  const gatilhos = db
+    .prepare('SELECT usuario_id, tipo, horario, ativo FROM gatilhos_configurados')
+    .all()
+
+  return {
+    ativosPorTipo,
+    participantes: participantes.map((p) => ({
+      ...p,
+      gatilhos: Object.fromEntries(
+        gatilhos.filter((g) => g.usuario_id === p.usuario_id).map((g) => [g.tipo, g]),
+      ),
+    })),
+  }
+}

@@ -12,6 +12,7 @@ import { rotasConexao, renderizarConexao } from './rotas/conexao.js'
 import { rotasConta } from './rotas/conta.js'
 import { rotasAdmins } from './rotas/admins.js'
 import { rotasCredenciais } from './rotas/credenciais.js'
+import { rotasGatilhos } from './rotas/gatilhos.js'
 import * as admins from '../db/adminRepo.js'
 
 /**
@@ -44,6 +45,7 @@ export function montarApp() {
   app.use(rotasConta)
   app.use(rotasAdmins)
   app.use(rotasCredenciais)
+  app.use(rotasGatilhos)
 
   // Erro não tratado vira página legível em vez de stack trace nu. Sem isto,
   // uma coluna faltando no banco devolve 500 em branco e o operador não tem

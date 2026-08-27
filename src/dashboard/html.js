@@ -63,6 +63,7 @@ export function pagina(titulo, corpo, { nav = true, cabeca = '' } = {}) {
   const menu = nav
     ? `<nav>
          <a href="/">Painel</a>
+         <a href="/gatilhos">Gatilhos</a>
          <a href="/conexao">Conexão</a>
          <a href="/credenciais">Credenciais</a>
          <a href="/admins">Administradores</a>
