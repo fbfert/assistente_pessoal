@@ -1,7 +1,11 @@
 import * as repo from '../db/userRepo.js'
 import { registrar } from '../db/interactionLog.js'
 import { TIPOS_INTERACAO } from '../constants.js'
-import { ESTADOS, TEXTO_CONSENTIMENTO } from '../anamnese/questions.js'
+import {
+  ESTADOS,
+  TEXTO_CONSENTIMENTO,
+  MARCAS_INTERNAS_DE_ANAMNESE,
+} from '../anamnese/questions.js'
 
 /**
  * Convida uma pessoa para o piloto.
@@ -45,7 +49,7 @@ export async function convidarPiloto(numeroWhatsapp, enviarMensagem, db, dataNas
     {
       usuarioId: usuario.usuario_id,
       tipo: TIPOS_INTERACAO.ANAMNESE,
-      texto: 'convite enviado; texto de consentimento entregue',
+      texto: MARCAS_INTERNAS_DE_ANAMNESE.CONVITE_ENVIADO,
     },
     db,
   )

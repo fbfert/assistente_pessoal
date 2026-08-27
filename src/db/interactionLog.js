@@ -1,6 +1,7 @@
 import { getDb } from './db.js'
 import { TIPOS_INTERACAO, CANAIS } from '../constants.js'
 import { config } from '../config.js'
+import { ehMarcaInternaDeAnamnese } from '../anamnese/questions.js'
 
 /**
  * Log append-only de interações. Nada aqui é atualizado nem apagado —
@@ -78,6 +79,69 @@ export function houveRespostaOuSilencioApos(usuarioId, gatilhoRelacionado, desde
       TIPOS_INTERACAO.RESPOSTA_GATILHO,
     )
   return Boolean(linha)
+}
+
+/**
+ * Tipos que são CONVERSA. Lista FECHADA de permitidos, nunca de exclusão.
+ *
+ * Exclusão erra por omissão quando um tipo novo aparece — e este projeto criou
+ * quatro tipos de interação em um único dia. O que não estiver aqui não sai para
+ * o participante, por construção.
+ *
+ * `gatilho_disparado` entra de propósito: saiu pelo WhatsApp, mas é a mesma
+ * conversa. Dois transportes, um histórico.
+ */
+const TIPOS_DE_CONVERSA = Object.freeze([
+  TIPOS_INTERACAO.ANAMNESE,
+  TIPOS_INTERACAO.RESPOSTA_GATILHO,
+  TIPOS_INTERACAO.DESPEJO_ESPONTANEO,
+  TIPOS_INTERACAO.CORRECAO_REPORTADA,
+  TIPOS_INTERACAO.MENSAGEM_ENVIADA,
+  TIPOS_INTERACAO.GATILHO_DISPARADO,
+])
+
+/** Quem falou. Só estes dois valores saem para a página. */
+const DO_SISTEMA = new Set([TIPOS_INTERACAO.MENSAGEM_ENVIADA, TIPOS_INTERACAO.GATILHO_DISPARADO])
+
+/**
+ * A conversa do participante, para devolver a ele mesmo.
+ *
+ * Devolve as ÚLTIMAS `limite` mensagens, em ordem cronológica: a pessoa lê de
+ * cima para baixo e a última linha é a mais recente.
+ *
+ * O que NUNCA sai daqui, por não estar na lista de permitidos: entrada no canal,
+ * ação do operador, nota de aprendizado, silêncio contabilizado e — o mais
+ * importante — resposta bloqueada por segurança, que é exatamente o texto que o
+ * sistema recusou entregar.
+ *
+ * Marca interna de anamnese ("consentimento aceito (v1)") também fica de fora:
+ * divide o tipo com as respostas da pessoa, mas não é fala de ninguém.
+ */
+export function listarConversa(usuarioId, limite = 50, db = getDb()) {
+  const marcadores = TIPOS_DE_CONVERSA.map(() => '?').join(', ')
+
+  const linhas = db
+    .prepare(
+      `SELECT tipo, texto, timestamp, canal
+         FROM historico_interacoes
+        WHERE usuario_id = ?
+          AND tipo IN (${marcadores})
+          AND texto IS NOT NULL
+          AND trim(texto) <> ''
+     ORDER BY timestamp DESC, interacao_id DESC
+        LIMIT ?`,
+    )
+    .all(usuarioId, ...TIPOS_DE_CONVERSA, limite * 2)
+
+  return linhas
+    .filter((l) => !(l.tipo === TIPOS_INTERACAO.ANAMNESE && ehMarcaInternaDeAnamnese(l.texto)))
+    .slice(0, limite)
+    .reverse()
+    .map((l) => ({
+      de: DO_SISTEMA.has(l.tipo) ? 'tars' : 'pessoa',
+      texto: l.texto,
+      quando: l.timestamp,
+    }))
 }
 
 export function listarInteracoes(usuarioId, db = getDb()) {

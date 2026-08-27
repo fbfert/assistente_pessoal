@@ -546,6 +546,23 @@ não espera por ela. O reconhecimento aparece a partir da mensagem seguinte, pel
 contexto enriquecido — atrasar toda resposta para reconhecer no mesmo turno é
 exatamente o atrito que a regra de ouro do input mínimo existe para evitar.
 
+**Ver a conversa anterior.** Quem fecha e reabre a aba encontra a tela limpa e um botão
+*"ver conversa anterior"*. Clicando, a página traz as **últimas 50 mensagens** — as dela
+e as do assistente, incluindo os check-ins que saíram pelo WhatsApp: é a mesma conversa,
+dois transportes.
+
+Não carrega sozinha de propósito: a sessão dura seis horas e o token fica no navegador,
+então quem reabre a aba pode não ser quem conversou. E nada é guardado no navegador além
+do token — o servidor é a fonte.
+
+O que **nunca** volta por esse caminho: registro interno (entrada no canal, ação do
+operador), nota de aprendizado — que é inferência sobre a pessoa, não o que ela disse —
+e, sobretudo, **resposta bloqueada por segurança**, que é justamente o texto que o
+sistema recusou entregar.
+
+Uma limitação sem conserto: conversa anterior a agosto/2026 só tem o lado da pessoa. As
+respostas do assistente daquela época não eram gravadas.
+
 *Como remover uma nota errada:* na página do participante, seção **Aprendizado
 contínuo**, link `remover` ao lado da nota. Passa pela confirmação de duas etapas e é
 **soft delete**: a nota some do contexto do assistente na mensagem seguinte e continua

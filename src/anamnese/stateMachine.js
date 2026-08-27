@@ -9,6 +9,7 @@ import {
   TEXTO_RECUSA_CONSENTIMENTO,
   TEXTO_CONCLUSAO,
   VERSAO_CONSENTIMENTO,
+  MARCAS_INTERNAS_DE_ANAMNESE,
 } from './questions.js'
 import {
   perguntaEscolhaPersonalidade,
@@ -137,7 +138,10 @@ function processarConsentimento(texto) {
   if (isAfirmativo(texto)) {
     return plano([perguntaDoEstado(ESTADOS.NOME)], [
       { tipo: 'registrarConsentimento', versao: VERSAO_CONSENTIMENTO },
-      registrarInteracao(TIPOS_INTERACAO.ANAMNESE, `consentimento aceito (${VERSAO_CONSENTIMENTO})`),
+      registrarInteracao(
+        TIPOS_INTERACAO.ANAMNESE,
+        MARCAS_INTERNAS_DE_ANAMNESE.CONSENTIMENTO_ACEITO(VERSAO_CONSENTIMENTO),
+      ),
       irPara(ESTADOS.NOME),
     ])
   }
@@ -145,7 +149,10 @@ function processarConsentimento(texto) {
   if (isNegativo(texto)) {
     // Não avança e não coleta nada. O estado continua 0.
     return plano([TEXTO_RECUSA_CONSENTIMENTO], [
-      registrarInteracao(TIPOS_INTERACAO.ANAMNESE, 'consentimento recusado'),
+      registrarInteracao(
+        TIPOS_INTERACAO.ANAMNESE,
+        MARCAS_INTERNAS_DE_ANAMNESE.CONSENTIMENTO_RECUSADO,
+      ),
     ])
   }
 

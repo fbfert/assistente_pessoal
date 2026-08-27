@@ -6,7 +6,7 @@ import { config } from '../config.js'
 import { CANAIS, TIPOS_INTERACAO } from '../constants.js'
 import * as repo from '../db/userRepo.js'
 import * as sessoes from '../db/sessaoWebRepo.js'
-import { registrar } from '../db/interactionLog.js'
+import { listarConversa, registrar } from '../db/interactionLog.js'
 import { ESTADOS, TEXTO_CONSENTIMENTO } from '../anamnese/questions.js'
 import { processarMensagem } from '../conversa/nucleo.js'
 import { bloqueado, registrarFalha, limpar } from './tentativas.js'
@@ -29,6 +29,15 @@ import { bloqueado, registrarFalha, limpar } from './tentativas.js'
  */
 
 const PUBLICO = join(dirname(fileURLToPath(import.meta.url)), 'publico')
+
+/**
+ * Quantas mensagens a conversa anterior devolve.
+ *
+ * Contagem, e não recorte por tempo: corte por tempo pune exatamente quem este
+ * produto atende — quem some por três dias e volta. Cinquenta cobre a anamnese
+ * inteira (uns 25 turnos) ou alguns dias de chat livre.
+ */
+const MENSAGENS_NO_HISTORICO = 50
 
 /** Resposta ÚNICA de falha de entrada. Ver `mesmaFalha`, abaixo. */
 const FALHA_ENTRADA = { erro: 'Telefone ou data de nascimento não conferem.' }
@@ -149,6 +158,26 @@ export function criarAppWeb(db) {
       mensagemInicial:
         usuario.anamnese_estado === ESTADOS.CONSENTIMENTO ? TEXTO_CONSENTIMENTO : null,
     })
+  })
+
+  // --- Conversa anterior ---------------------------------------------------------
+
+  /**
+   * A conversa que a pessoa já teve, para ela mesma.
+   *
+   * Primeira rota do canal web que DEVOLVE dado de saúde — até aqui a página só
+   * recebia o turno corrente. Por isso a identidade vem exclusivamente da
+   * sessão, e o que sai passa por lista fechada de tipos permitidos em
+   * `listarConversa`: resposta bloqueada por segurança, nota de aprendizado e
+   * registro interno não têm como escapar por aqui.
+   */
+  app.get('/web/historico', (req, res) => {
+    const usuarioId = sessoes.validar(tokenDaRequisicao(req), db)
+    if (!usuarioId) {
+      return res.status(401).json({ erro: 'Sessão inválida ou expirada. Entre de novo.' })
+    }
+
+    res.json({ mensagens: listarConversa(usuarioId, MENSAGENS_NO_HISTORICO, db) })
   })
 
   // --- Mensagem ----------------------------------------------------------------

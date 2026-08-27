@@ -51,12 +51,16 @@ function avisar(onde, texto) {
  * devolve entram como TEXTO. Isso não é estilo — é o que impede que um texto
  * parecido com marcação vire marcação.
  */
-function bolha(quem, texto) {
+function bolha(quem, texto, { noTopo = false } = {}) {
   const div = document.createElement('div')
   div.className = `bolha ${quem}`
   div.textContent = texto
-  el('conversa').append(div)
-  div.scrollIntoView({ block: 'nearest' })
+
+  if (noTopo) el('conversa').prepend(div)
+  else {
+    el('conversa').append(div)
+    div.scrollIntoView({ block: 'nearest' })
+  }
   return div
 }
 
@@ -146,6 +150,7 @@ el('form-entrada').addEventListener('submit', async (evento) => {
     el('form-entrada').reset()
     avisar('conversa', null)
     el('conversa').replaceChildren()
+    reativarBotaoAnterior()
     if (mensagemInicial) bolha('tars', mensagemInicial)
 
     mostrar('conversa')
@@ -155,6 +160,57 @@ el('form-entrada').addEventListener('submit', async (evento) => {
   } finally {
     botao.disabled = false
     botao.textContent = 'Entrar'
+  }
+})
+
+// --- Conversa anterior ----------------------------------------------------------
+
+function reativarBotaoAnterior() {
+  el('linha-anterior').hidden = false
+  el('botao-anterior').disabled = false
+  el('botao-anterior').textContent = 'Ver conversa anterior'
+}
+
+/**
+ * Sob clique, nunca sozinha.
+ *
+ * A sessão dura horas e o token vive neste navegador, então quem reabre a aba
+ * pode não ser quem conversou. Carregar sozinho poria semanas de conversa sobre
+ * saúde na tela sem ninguém ter pedido.
+ *
+ * Nada disto é guardado aqui: o servidor é a fonte, e o que chega vive só na
+ * tela até a aba fechar.
+ */
+el('botao-anterior').addEventListener('click', async () => {
+  const botao = el('botao-anterior')
+  botao.disabled = true
+  botao.textContent = 'Buscando...'
+
+  try {
+    const resposta = await fetch(rota('web/historico'), {
+      headers: { authorization: `Bearer ${token}` },
+    })
+
+    if (resposta.status === 401) return exigirNovaEntrada()
+    if (!resposta.ok) throw new Error('falhou')
+
+    const { mensagens } = await resposta.json()
+
+    // De trás para frente: cada uma entra no topo, então a ordem se preserva.
+    for (const m of [...(mensagens ?? [])].reverse()) {
+      bolha(m.de === 'tars' ? 'tars' : 'pessoa', m.texto, { noTopo: true })
+    }
+
+    if (!mensagens?.length) bolha('pensando', 'Não há conversa anterior.', { noTopo: true })
+
+    // Some depois de usada: sem isso viraria um "carregar de novo" que duplica
+    // bolhas, e esta página não tem estado para deduplicar. Escondida, e não
+    // removida, para voltar inteira se a pessoa sair e entrar de novo.
+    el('linha-anterior').hidden = true
+  } catch {
+    avisar('conversa', 'Não consegui buscar a conversa anterior. Tente de novo.')
+    botao.disabled = false
+    botao.textContent = 'Ver conversa anterior'
   }
 })
 

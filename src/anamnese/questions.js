@@ -20,6 +20,36 @@ export const ESTADOS = Object.freeze({
 
 export const VERSAO_CONSENTIMENTO = 'v1'
 
+/**
+ * Marcas INTERNAS gravadas com tipo `anamnese`.
+ *
+ * Elas não são fala de ninguém: são anotações do sistema sobre o andamento do
+ * onboarding, que dividem o tipo `anamnese` com as respostas reais da pessoa.
+ * Sem distinguir, a conversa devolvida ao participante mostraria "consentimento
+ * aceito (v1)" como se ele tivesse escrito aquilo.
+ *
+ * Ficam AQUI, e são usadas tanto por quem grava quanto por quem filtra — uma
+ * lista escrita duas vezes divergiria no primeiro texto novo.
+ *
+ * A separação correta seria um tipo próprio no histórico; isso pede migração de
+ * CHECK e reclassificação das linhas antigas, e está registrado como dívida.
+ */
+export const MARCAS_INTERNAS_DE_ANAMNESE = Object.freeze({
+  CONVITE_ENVIADO: 'convite enviado; texto de consentimento entregue',
+  CONSENTIMENTO_ACEITO: (versao) => `consentimento aceito (${versao})`,
+  CONSENTIMENTO_RECUSADO: 'consentimento recusado',
+})
+
+/** Um texto de `anamnese` é marca interna, e não fala da pessoa? */
+export function ehMarcaInternaDeAnamnese(texto) {
+  const t = String(texto ?? '').trim()
+  return (
+    t === MARCAS_INTERNAS_DE_ANAMNESE.CONVITE_ENVIADO ||
+    t === MARCAS_INTERNAS_DE_ANAMNESE.CONSENTIMENTO_RECUSADO ||
+    /^consentimento aceito \(.+\)$/.test(t)
+  )
+}
+
 export const TEXTO_CONSENTIMENTO = `Oi. Eu sou o TARS.
 
 Eu sou um assistente de rotina por WhatsApp — remédio, tarefa, sono. Você me contratou pra ser um empurrão no momento certo, não pra ser mais um app cobrando você.

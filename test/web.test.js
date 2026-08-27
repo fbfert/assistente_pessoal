@@ -8,7 +8,7 @@ import { abrirDb, closeDb } from '../src/db/db.js'
 import { config } from '../src/config.js'
 import * as repo from '../src/db/userRepo.js'
 import * as sessoes from '../src/db/sessaoWebRepo.js'
-import { listarInteracoes } from '../src/db/interactionLog.js'
+import { listarInteracoes, registrar } from '../src/db/interactionLog.js'
 import { convidarPiloto } from '../src/admin/convidarPiloto.js'
 import { criarAppWeb } from '../src/web/servidor.js'
 import { _limparTudo } from '../src/web/tentativas.js'
@@ -494,5 +494,168 @@ describe('o canal web é só reativo', () => {
       (l) => l.tipo === TIPOS_INTERACAO.GATILHO_DISPARADO,
     )
     assert.equal(disparos.length, 0)
+  })
+})
+
+describe('conversa anterior', () => {
+  async function comConversa() {
+    const u = await convidado()
+    repo.setAnamneseEstado(u.usuario_id, ESTADOS.CONCLUIDO, db)
+    const { token } = await (await entrar({ telefone: TELEFONE, dataNascimento: NASCIMENTO })).json()
+    return { usuario: repo.findById(u.usuario_id, db), token }
+  }
+
+  const pedirHistorico = (token) =>
+    fetch(`${base}/web/historico`, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    })
+
+  test('devolve os dois lados, em ordem cronológica', async () => {
+    const { usuario, token } = await comConversa()
+
+    // A rota HTTP usa o router de verdade, sem chave em teste — então o lado do
+    // assistente é gravado direto, que é o que a rota de histórico vai ler.
+    await mandar(token, { texto: 'primeira coisa' })
+    registrar(
+      {
+        usuarioId: usuario.usuario_id,
+        tipo: TIPOS_INTERACAO.MENSAGEM_ENVIADA,
+        texto: 'resposta do assistente',
+        canal: CANAIS.WEB,
+      },
+      db,
+    )
+    await mandar(token, { texto: 'segunda coisa' })
+
+    const { mensagens } = await (await pedirHistorico(token)).json()
+    const textos = mensagens.map((m) => m.texto)
+
+    assert.ok(textos.indexOf('primeira coisa') < textos.indexOf('segunda coisa'), 'ordem')
+    assert.ok(mensagens.some((m) => m.de === 'pessoa'))
+    assert.ok(mensagens.some((m) => m.de === 'tars'), 'o lado do assistente também volta')
+    assert.ok(mensagens.every((m) => m.quando))
+  })
+
+  test('respeita o limite, devolvendo as MAIS RECENTES', async () => {
+    const { usuario, token } = await comConversa()
+
+    for (let i = 1; i <= 60; i++) {
+      registrar(
+        {
+          usuarioId: usuario.usuario_id,
+          tipo: TIPOS_INTERACAO.DESPEJO_ESPONTANEO,
+          texto: `mensagem ${i}`,
+          canal: CANAIS.WEB,
+          timestamp: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString(),
+        },
+        db,
+      )
+    }
+
+    const { mensagens } = await (await pedirHistorico(token)).json()
+
+    assert.equal(mensagens.length, 50)
+    assert.ok(mensagens.some((m) => m.texto === 'mensagem 60'), 'a mais recente está lá')
+    assert.ok(!mensagens.some((m) => m.texto === 'mensagem 1'), 'a mais antiga ficou de fora')
+  })
+
+  test('RESPOSTA BLOQUEADA POR SEGURANÇA nunca sai', async () => {
+    const { usuario, token } = await comConversa()
+    const perigosa = 'Comece pelo Vortex agora, se ainda não tomou hoje.'
+
+    registrar(
+      {
+        usuarioId: usuario.usuario_id,
+        tipo: TIPOS_INTERACAO.RESPOSTA_BLOQUEADA_SEGURANCA,
+        texto: perigosa,
+        canal: CANAIS.WEB,
+      },
+      db,
+    )
+
+    const corpo = await (await pedirHistorico(token)).text()
+
+    assert.ok(!corpo.includes('Vortex'), 'o bloqueio seria anulado por esta porta')
+  })
+
+  test('registro interno não é conversa', async () => {
+    const { usuario, token } = await comConversa()
+
+    for (const [tipo, texto] of [
+      [TIPOS_INTERACAO.ACAO_ADMIN, 'campo nome alterado via admin'],
+      [TIPOS_INTERACAO.APRENDIZADO_PERFIL, 'o_que_trava: "reunião longa"'],
+      [TIPOS_INTERACAO.SILENCIO, null],
+    ]) {
+      registrar({ usuarioId: usuario.usuario_id, tipo, texto, canal: CANAIS.WEB }, db)
+    }
+
+    const corpo = await (await pedirHistorico(token)).text()
+
+    assert.ok(!corpo.includes('via admin'))
+    assert.ok(!corpo.includes('reunião longa'))
+    // A entrada no canal é registrada em toda sessão — não pode virar mensagem.
+    assert.ok(!corpo.includes('entrada no canal web'))
+  })
+
+  test('marca interna de anamnese não vira fala da pessoa', async () => {
+    const u = await convidado()
+    const { token } = await (await entrar({ telefone: TELEFONE, dataNascimento: NASCIMENTO })).json()
+
+    // O convite grava "convite enviado; texto de consentimento entregue".
+    const corpo = await (await pedirHistorico(token)).text()
+
+    assert.ok(!corpo.includes('convite enviado'))
+  })
+
+  test('sem sessão, com token inválido e com token expirado: recusado', async () => {
+    const { token } = await comConversa()
+
+    assert.equal((await pedirHistorico(null)).status, 401)
+    assert.equal((await pedirHistorico('inventado')).status, 401)
+
+    db.prepare("UPDATE sessoes_web SET expira_em = '2020-01-01T00:00:00.000Z'").run()
+    assert.equal((await pedirHistorico(token)).status, 401)
+  })
+
+  test('devolve só a conversa do dono da sessão', async () => {
+    const { token } = await comConversa()
+    const outro = await convidado('+5511900003333', '1985-01-01')
+    registrar(
+      {
+        usuarioId: outro.usuario_id,
+        tipo: TIPOS_INTERACAO.DESPEJO_ESPONTANEO,
+        texto: 'segredo do outro participante',
+        canal: CANAIS.WEB,
+      },
+      db,
+    )
+
+    const corpo = await (await pedirHistorico(token)).text()
+
+    assert.ok(!corpo.includes('segredo do outro'))
+  })
+})
+
+describe('a página pede a conversa sob clique', () => {
+  test('o botão existe e a conversa não vem sozinha', async () => {
+    const html = await (await fetch(`${base}/`)).text()
+
+    assert.match(html, /id="botao-anterior"/)
+    assert.match(html, /Ver conversa anterior/)
+  })
+
+  test('o cliente não guarda conversa no navegador', async () => {
+    const fonte = await (await fetch(`${base}/app.js`)).text()
+    const codigo = fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+    // Só o token pode ir para o armazenamento local.
+    const guardados = [...codigo.matchAll(/setItem\(([^,]+),/g)].map((m) => m[1].trim())
+    assert.deepEqual(guardados, ['CHAVE_TOKEN'], 'nada além do token é guardado')
+  })
+
+  test('o botão some depois de usado', async () => {
+    const fonte = await (await fetch(`${base}/app.js`)).text()
+
+    assert.match(fonte, /linha-anterior'\)\.hidden = true/)
   })
 })
