@@ -67,7 +67,7 @@ pela web até o operador preencher — o que é recusa de acesso, não perda de 
 
 `historico_interacoes` SHALL restringir `tipo` a `gatilho_disparado`,
 `resposta_gatilho`, `despejo_espontaneo`, `silencio`, `correcao_reportada`, `anamnese`,
-`acao_admin`, `entrada_web`, `mensagem_enviada` e `resposta_bloqueada_seguranca`.
+`acao_admin`, `entrada_web`, `mensagem_enviada`, `resposta_bloqueada_seguranca` e `aprendizado_perfil`.
 
 A ampliação dessa lista em banco já existente SHALL ser feita por migração que recria a
 tabela com a constraint atualizada, dentro de transação e com as chaves estrangeiras
@@ -79,6 +79,10 @@ desligadas, conferindo a contagem de linhas antes e depois, e SHALL ser idempote
 `mensagem_enviada` SHALL registrar toda mensagem que o sistema envia numa conversa —
 pergunta de anamnese e resposta de chat livre —, com o canal por onde saiu. Disparo de
 gatilho SHALL continuar sendo registrado apenas como `gatilho_disparado`.
+
+`aprendizado_perfil` SHALL registrar o que o sistema aprendeu sobre o participante fora
+da anamnese, e SHALL NOT ser confundido com `acao_admin`: um é evento do bot, o outro é
+escrita do operador.
 
 `resposta_bloqueada_seguranca` SHALL registrar resposta que o sistema recusou enviar,
 guardando o texto que teria sido entregue. Esse texto SHALL NOT ser descartado: sem ele
@@ -145,6 +149,10 @@ coluna anulável obrigaria cada consulta a tratar o caso do nulo para sempre.
 - **WHEN** o sistema bloqueia uma resposta por segurança
 - **THEN** uma linha `resposta_bloqueada_seguranca` guarda o texto que seria enviado
 
+#### Scenario: Aprendizado de perfil é um tipo válido
+- **WHEN** o sistema registra que aprendeu algo novo sobre um participante
+- **THEN** o banco aceita o tipo `aprendizado_perfil`
+
 ### Requirement: Criação idempotente de usuário
 
 A busca-ou-criação de usuário por número de WhatsApp SHALL ser idempotente: chamadas repetidas
@@ -180,8 +188,9 @@ O sistema SHALL oferecer a anonimização de participante como forma de saída d
 e SHALL NOT oferecer exclusão física do registro.
 
 A anonimização SHALL substituir por marcador redigido: o número de WhatsApp, todos os
-campos de anamnese, a data de nascimento, o nome e o horário de cada remédio, e o campo
-`texto` de todas as interações daquele participante.
+campos de anamnese, a data de nascimento, o nome e o horário de cada remédio, o campo
+`texto` de todas as interações daquele participante, e o texto de todas as notas aprendidas
+dele — removidas ou não.
 
 A anonimização SHALL apagar todas as sessões web daquele participante.
 
@@ -198,7 +207,9 @@ Motivo registrado: `historico_interacoes` tem exclusão em cascata a partir de
 timestamp e versão — e o rastro das ações do operador sobre o dado dele, que é
 justamente a prova exigida numa auditoria. O campo `texto` precisa ser redigido porque
 guarda respostas escritas pela própria pessoa, frequentemente com nome e detalhes de
-saúde. A data de nascimento entra pelo mesmo motivo: é identificação direta. As sessões
+saúde. O texto das notas entra pelo mesmo motivo: é conteúdo escrito pela pessoa, recortado
+da conversa — redigir tudo menos as notas seria fachada. A data de nascimento entra por ser
+identificação direta. As sessões
 são apagadas, e não redigidas, porque uma sessão viva depois da saída do piloto seria
 acesso a um dado que a pessoa pediu para encerrar.
 
@@ -219,6 +230,10 @@ acesso a um dado que a pessoa pediu para encerrar.
 #### Scenario: Acesso pela web cessa imediatamente
 - **WHEN** um participante com sessão web ativa é anonimizado
 - **THEN** a sessão deixa de existir e a requisição seguinte é recusada
+
+#### Scenario: Nota já removida também é redigida
+- **WHEN** um participante com nota removida é anonimizado
+- **THEN** o texto daquela nota também fica redigido
 
 ### Requirement: Espera por escrita concorrente
 
@@ -331,3 +346,44 @@ mesmo volume. Diferente de alterar um CHECK, acrescentar coluna o SQLite faz com
 #### Scenario: Migração já aplicada não roda de novo
 - **WHEN** o sistema sobe com as colunas já presentes
 - **THEN** nenhuma alteração de schema é executada
+
+### Requirement: Notas de perfil aprendidas fora da anamnese
+
+O sistema SHALL manter uma tabela `notas_aprendidas` com: o participante, o campo, o
+texto da nota, a referência à interação de origem, o momento de criação, e o par de
+colunas que registra a remoção — momento e autor.
+
+A coluna `campo` SHALL ter CHECK fechado com os campos elegíveis.
+
+A referência ao participante SHALL ter exclusão em cascata, como as demais tabelas
+filhas de `usuarios`. A referência ao autor da remoção SHALL NOT ter cascata — conta de
+administrador se desativa, nunca se apaga.
+
+A tabela SHALL ter índice composto em participante mais campo.
+
+Remoção SHALL ser sempre lógica: o sistema SHALL NOT apagar linha de nota, exceto pelo
+reinício de anamnese descrito abaixo.
+
+#### Scenario: Campo inválido rejeitado pelo banco
+- **WHEN** uma escrita tenta gravar nota com campo fora da lista elegível
+- **THEN** o banco rejeita a linha
+
+#### Scenario: Nota removida continua existindo
+- **WHEN** uma nota é removida pelo operador
+- **THEN** a linha permanece na tabela, com momento e autor da remoção preenchidos
+
+### Requirement: Reinício de anamnese leva as notas junto
+
+O reinício de anamnese SHALL apagar as notas aprendidas daquele participante.
+
+O reinício SHALL NOT tocar em `historico_interacoes`.
+
+Motivo registrado: reiniciar existe para a pessoa responder tudo de novo. Notas
+construídas sobre o perfil velho contaminariam o novo — é o mesmo motivo pelo qual
+remédios e gatilhos já são apagados ali. O rastro de que as notas existiram continua
+nas linhas do histórico, que ninguém apaga.
+
+#### Scenario: Reinício limpa as notas
+- **WHEN** a anamnese de um participante é reiniciada
+- **THEN** ele não tem mais nota aprendida, e as linhas de histórico correspondentes
+  continuam lá

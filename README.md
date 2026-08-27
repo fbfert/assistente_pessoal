@@ -516,6 +516,54 @@ anamnese e resposta de chat livre — é registrada junto com o que a pessoa esc
 Antes, só a mensagem recebida era gravada, e não havia como auditar o que o assistente
 tinha respondido.
 
+**Aprendizado contínuo: o perfil acumula depois do dia 1.** A anamnese captura o
+perfil uma vez; a partir dela, cada mensagem de chat livre passa por um extrator que
+pergunta ao modelo se a pessoa revelou algo novo e **permanente** sobre si.
+
+*Elegível:* o que trava, rotina, gatilhos de sobrecarga, sinal de alerta, pessoas-chave,
+vocabulário próprio, nunca fazer. A lista é derivada dos campos da anamnese, não
+redigitada.
+
+*Nunca tocado:* **remédio** e **nome**. Remédio tem extração própria, com tratamento de
+Regra 1b específico para dado de saúde regulado — misturar faria uma regra estrita e
+auditável passar a valer para um extrator mais solto. Nome é identidade, não traço: o
+bot "aprender" um nome diferente do que a pessoa pediu seria regressão.
+
+*Conservador de propósito:* só captura o que a pessoa disse **de si mesma** e descreveu
+como **geral ou recorrente**, e que seja **novo** frente ao que já se sabe. As três
+condições valem juntas. "Hoje o trânsito me deixou louco" não vira nota; "barulho de
+obra sempre me derruba a semana" vira. Na dúvida, não captura — perder uma nota é
+recuperável, um traço falso no perfil se propaga em silêncio para toda mensagem
+seguinte.
+
+*A nota empilha, nunca substitui.* O que a pessoa respondeu no dia 1, sob consentimento
+formal, continua intacto. No contexto do assistente as duas coisas aparecem com rótulos
+diferentes: `O que trava: começar as coisas | Notas aprendidas depois: reunião longa
+(12/09)`.
+
+*Nada é enviado por causa disso.* A extração roda **em paralelo** com a resposta, que
+não espera por ela. O reconhecimento aparece a partir da mensagem seguinte, pelo
+contexto enriquecido — atrasar toda resposta para reconhecer no mesmo turno é
+exatamente o atrito que a regra de ouro do input mínimo existe para evitar.
+
+*Como remover uma nota errada:* na página do participante, seção **Aprendizado
+contínuo**, link `remover` ao lado da nota. Passa pela confirmação de duas etapas e é
+**soft delete**: a nota some do contexto do assistente na mensagem seguinte e continua
+no banco, riscada na tela, com quem removeu e quando. A remoção é auditada com o campo
+e o texto da nota.
+
+*O custo, sem rodeio:* é **mais uma chamada de LLM por mensagem de chat livre**, sempre
+— aprendendo algo ou não. Somada à chamada de resposta (e à de remédio, quando o texto
+menciona medicação), uma mensagem pode custar até três chamadas.
+
+Dimensionando para o piloto — 5 pessoas, 2 a 3 semanas, na casa de 10 mensagens de chat
+livre por pessoa por dia: cerca de **mil chamadas extras no período inteiro**. Cada uma
+é curta: o prompt de extração mais o perfil conhecido dão algumas centenas de tokens de
+entrada, e a resposta é uma linha de JSON. Ordem de grandeza de poucos dólares no
+piloto inteiro — o valor exato depende do provedor e do modelo ativos em
+`/credenciais`. Num volume de produto, é o primeiro lugar a revisar: dá para filtrar por
+indício antes de chamar, como a extração de remédio já faz.
+
 **Pergunta de volta não vira perfil.** Se a pessoa responde "como assim?", o sistema
 explica a pergunta de outro jeito em vez de gravar a dúvida como resposta — uma vez
 por pergunta; a segunda dúvida seguida é aceita como está, para não travar ninguém.

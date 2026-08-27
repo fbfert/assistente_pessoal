@@ -90,6 +90,14 @@ export const TIPOS_INTERACAO = Object.freeze({
    * "quantas vezes o modelo tentou?" — e essa pergunta vai ser feita.
    */
   RESPOSTA_BLOQUEADA_SEGURANCA: 'resposta_bloqueada_seguranca',
+  /**
+   * O sistema aprendeu algo novo sobre o participante FORA da anamnese.
+   *
+   * Tipo próprio, e não `acao_admin`: aquele significa "o operador escreveu algo
+   * sobre esta pessoa". Um é evento do bot, o outro é escrita da equipe, e
+   * confundi-los faria a linha do tempo mentir sobre quem agiu.
+   */
+  APRENDIZADO_PERFIL: 'aprendizado_perfil',
 })
 
 /**

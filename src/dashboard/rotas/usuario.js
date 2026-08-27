@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import * as repo from '../../db/userRepo.js'
+import * as notasRepo from '../../db/notasRepo.js'
 import { listarInteracoes } from '../../db/interactionLog.js'
 import { pagina, escapar, rotuloGatilho, estadoLegivel } from '../html.js'
 import { SEM_INFORMACAO, TIPOS_GATILHO, TIPOS_INTERACAO } from '../../constants.js'
@@ -27,16 +28,17 @@ rotasUsuario.get('/usuarios/:id', (req, res) => {
   const remedios = repo.listarRemedios(usuario.usuario_id)
   const gatilhos = repo.listarGatilhosUsuario(usuario.usuario_id)
   const interacoes = listarInteracoes(usuario.usuario_id)
+  const notas = notasRepo.listarTodasAsNotas(usuario.usuario_id)
 
   res.type('html').send(
     pagina(
       usuario.nome || usuario.numero_whatsapp,
-      renderizarDetalhe({ usuario, remedios, gatilhos, interacoes }),
+      renderizarDetalhe({ usuario, remedios, gatilhos, interacoes, notas }),
     ),
   )
 })
 
-export function renderizarDetalhe({ usuario, remedios, gatilhos, interacoes }) {
+export function renderizarDetalhe({ usuario, remedios, gatilhos, interacoes, notas = [] }) {
   return `<p class="nota"><a href="/">&larr; painel</a></p>
 <h1>${escapar(usuario.nome) || '<em>sem nome</em>'}</h1>
 <p class="nota">
@@ -50,6 +52,7 @@ ${blocoConsentimento(usuario)}
 ${blocoAcessoWeb(usuario)}
 ${blocoPersonalidade(usuario)}
 ${blocoAnamnese(usuario)}
+${blocoAprendizado(usuario, notas)}
 ${blocoRemedios(usuario, remedios)}
 ${blocoGatilhos(usuario, gatilhos)}
 ${blocoContadores(usuario)}
@@ -134,6 +137,55 @@ function blocoAnamnese(u) {
 
   return `<h2>Anamnese</h2>
 <p class="nota">Editar aqui substitui o SQL manual que o README documentava como única saída.</p>
+<table>${linhas}</table>`
+}
+
+/**
+ * O que o sistema aprendeu DEPOIS da anamnese, agrupado por campo.
+ *
+ * Fica logo abaixo da anamnese, e separado dela, porque é outra coisa: a
+ * resposta original foi dada sob consentimento formal; a nota é inferência de
+ * conversa. Misturar as duas na mesma tabela apagaria a distinção justamente
+ * para quem precisa dela — quem opera.
+ *
+ * Removida continua listada, riscada: soft delete existe para a nota errada
+ * continuar auditável.
+ */
+function blocoAprendizado(u, notas) {
+  if (!notas.length) {
+    return `<h2>Aprendizado contínuo</h2>
+<p class="nota">Nada aprendido ainda. O sistema anota aqui o que a pessoa contar sobre si
+na conversa livre — nunca remédio, nunca nome, e só o que ela descrever como padrão, não
+queixa de um dia.</p>`
+  }
+
+  const porCampo = {}
+  for (const n of notas) (porCampo[n.campo] ??= []).push(n)
+
+  const linhas = Object.entries(porCampo)
+    .map(([campo, doCampo]) => {
+      const itens = doCampo
+        .map((n) => {
+          const quando = escapar(String(n.criado_em).slice(0, 10))
+          if (n.removido_em) {
+            return `<li><s>${escapar(n.texto)}</s> <span class="nota">(${quando} · removida em
+              ${escapar(String(n.removido_em).slice(0, 10))})</span></li>`
+          }
+          return `<li>${escapar(n.texto)} <span class="nota">(${quando})</span> ·
+            <a href="/usuarios/${u.usuario_id}/nota/${n.nota_id}/remover">remover</a></li>`
+        })
+        .join('')
+
+      return `<tr><th>${ROTULOS_CAMPO[campo] ?? escapar(campo)}</th><td><ul>${itens}</ul></td></tr>`
+    })
+    .join('')
+
+  return `<h2>Aprendizado contínuo <span class="nota">(${
+    notas.filter((n) => !n.removido_em).length
+  } ativas)</span></h2>
+<p class="nota">Anotado pelo sistema a partir da conversa livre — <strong>não</strong> substitui
+a resposta da anamnese, empilha por cima dela. Remover é reversível no sentido de que a linha
+continua no banco: some do contexto do assistente e fica riscada aqui.</p>
 <table>${linhas}</table>`
 }
 

@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import * as repo from '../../db/userRepo.js'
+import * as notasRepo from '../../db/notasRepo.js'
 import { registrar } from '../../db/interactionLog.js'
 import { convidarPiloto } from '../../admin/convidarPiloto.js'
 import { pagina, escapar, rotuloGatilho } from '../html.js'
@@ -247,6 +248,45 @@ rotasAcoes.post('/usuarios/:id/remedio/:remedioId/remover', (req, res) => {
   repo.removerRemedio(remedio.remedio_id)
   auditar(req, remedio.usuario_id, `remédio "${remedio.nome}" (${remedio.horario}) removido via admin`)
   voltar(res, remedio.usuario_id)
+})
+
+// --- Nota de aprendizado contínuo ---------------------------------------------------
+
+rotasAcoes.get('/usuarios/:id/nota/:notaId/remover', (req, res) => {
+  const nota = notasRepo.buscarNota(req.params.notaId)
+  if (!nota) return res.status(404).send('nota não encontrada')
+
+  res.type('html').send(
+    confirmacao({
+      titulo: 'Remover nota aprendida',
+      corpo: `<p>Remover esta nota do campo <strong>${escapar(nota.campo)}</strong>?</p>
+              <blockquote>${escapar(nota.texto)}</blockquote>
+              <p>Ela some do contexto do assistente na próxima mensagem. A linha
+              <strong>continua no banco</strong>, marcada com quem removeu e quando — é
+              assim que se audita um aprendizado errado depois.</p>
+              <p class="nota">A resposta original da anamnese não é afetada: a nota nunca
+              substituiu nada, só empilhava por cima.</p>`,
+      acao: `/usuarios/${nota.usuario_id}/nota/${nota.nota_id}/remover`,
+      botao: 'Remover nota',
+      voltarPara: `/usuarios/${nota.usuario_id}`,
+    }),
+  )
+})
+
+rotasAcoes.post('/usuarios/:id/nota/:notaId/remover', (req, res) => {
+  const nota = notasRepo.buscarNota(req.params.notaId)
+  if (!nota) return res.status(404).send('nota não encontrada')
+  if (nota.removido_em) return voltar(res, nota.usuario_id)
+
+  notasRepo.removerNota(nota.nota_id, req.adminId ?? null)
+
+  // Campo e texto da nota — nunca a mensagem de origem inteira.
+  auditar(
+    req,
+    nota.usuario_id,
+    `nota aprendida removida do campo ${nota.campo}: "${nota.texto}"`,
+  )
+  voltar(res, nota.usuario_id)
 })
 
 // --- Gatilho ---------------------------------------------------------------------

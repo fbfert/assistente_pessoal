@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS historico_interacoes (
                                               'correcao_reportada', 'anamnese',
                                               'acao_admin', 'entrada_web',
                                               'mensagem_enviada',
-                                              'resposta_bloqueada_seguranca')),
+                                              'resposta_bloqueada_seguranca',
+                                              'aprendizado_perfil')),
   timestamp           TEXT    NOT NULL,
   texto               TEXT,
   -- Tipo do gatilho a que esta linha se refere (disparo, resposta ou silêncio).
@@ -195,3 +196,33 @@ CREATE TABLE IF NOT EXISTS sessoes_web (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessoes_web_expira ON sessoes_web (expira_em);
+
+-- Notas de perfil aprendidas DEPOIS da anamnese, na conversa livre.
+--
+-- Empilham por cima da resposta original; nunca a substituem. O que a pessoa
+-- respondeu no dia 1 foi dito sob consentimento formal e é fato datado; o que se
+-- aprende depois é inferência de conversa, sem a mesma confiabilidade. Sobrescrever
+-- apagaria a distinção -- e com ela a resposta para "isso ela disse ou o bot deduziu?".
+--
+-- `interacao_id` aponta para a mensagem de origem em vez de copiá-la: a mensagem
+-- pode conter outro dado sensível sem relação com o que foi aprendido, e uma
+-- segunda cópia seria mais um lugar para a anonimização lembrar de redigir.
+--
+-- Remoção é SOFT: `removido_em` marca quando, `removido_por` diz quem. Sem DELETE.
+CREATE TABLE IF NOT EXISTS notas_aprendidas (
+  nota_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id   INTEGER NOT NULL REFERENCES usuarios(usuario_id) ON DELETE CASCADE,
+  campo        TEXT    NOT NULL
+                       CHECK (campo IN ('o_que_trava', 'rotina_boa', 'rotina_ruim',
+                                        'gatilhos_de_sobrecarga', 'sinal_de_alerta',
+                                        'pessoas_chave', 'vocabulario_proprio',
+                                        'nunca_fazer')),
+  texto        TEXT    NOT NULL,
+  interacao_id INTEGER REFERENCES historico_interacoes(interacao_id),
+  criado_em    TEXT    NOT NULL DEFAULT (datetime('now')),
+  removido_em  TEXT,
+  -- Sem ON DELETE: conta de administrador se desativa, nunca se apaga.
+  removido_por INTEGER REFERENCES admin_usuarios(admin_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notas_usuario_campo ON notas_aprendidas (usuario_id, campo);

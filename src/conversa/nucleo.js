@@ -7,11 +7,14 @@ import {
 } from '../constants.js'
 import { instruiSobreMedicacao } from './seguranca.js'
 import * as repo from '../db/userRepo.js'
+import { CAMPOS_APRENDIVEIS } from '../db/userRepo.js'
 import { registrar, ultimoGatilhoDisparado } from '../db/interactionLog.js'
 import { ESTADOS } from '../anamnese/questions.js'
 import { processarResposta } from '../anamnese/stateMachine.js'
 import { aplicarPlano } from '../anamnese/aplicarPlano.js'
 import { extrairRemedios, temIndicioDeRemedio } from '../anamnese/extrairRemedios.js'
+import { extrairAprendizado } from '../anamnese/aprenderPerfil.js'
+import * as notasRepo from '../db/notasRepo.js'
 import { classificarMensagem } from '../classify/heuristic.js'
 import { montarSystemPrompt } from '../llm/prompts.js'
 import { chamarLLM } from '../llm/router.js'
@@ -56,13 +59,14 @@ export async function processarMensagem({ usuario, texto, canal, responder }, de
 
   const chamar = deps.chamar ?? chamarLLM
   const extrair = deps.extrair ?? extrairRemedios
+  const aprender = deps.aprender ?? extrairAprendizado
   const db = deps.db
 
   if (usuario.anamnese_estado < ESTADOS.CONCLUIDO) {
     return passoDeAnamnese(usuario, texto, canal, responder, { extrair, db })
   }
 
-  return conversaLivre(usuario, texto, canal, responder, { chamar, extrair, db })
+  return conversaLivre(usuario, texto, canal, responder, { chamar, extrair, aprender, db })
 }
 
 /**
@@ -93,12 +97,15 @@ async function passoDeAnamnese(usuario, texto, canal, responder, { extrair, db }
   }
 }
 
-async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair, db }) {
+async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair, aprender, db }) {
   const ultimoGatilho = ultimoGatilhoDisparado(usuario.usuario_id, db)
   const classe = classificarMensagem(new Date(), ultimoGatilho, config.respostaGatilhoJanelaMin)
   const gatilhoTipo = ultimoGatilho?.gatilho_relacionado ?? null
 
-  registrar(
+  // A linha da mensagem recebida é o que a nota aponta como origem — guardar a
+  // referência evita copiar a mensagem, que pode ter outro dado sensível sem
+  // relação com o que foi aprendido.
+  const { interacao_id: interacaoId } = registrar(
     {
       usuarioId: usuario.usuario_id,
       tipo: classe,
@@ -117,17 +124,23 @@ async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair
   }
 
   const remedios = repo.listarRemedios(usuario.usuario_id, db)
-  const systemPrompt = montarSystemPrompt(usuario, remedios)
+  const notas = notasRepo.notasAtivasPorCampo(usuario.usuario_id, db)
+  const systemPrompt = montarSystemPrompt(usuario, remedios, notas)
 
-  // As duas chamadas de LLM saem JUNTAS. A extração só acontece quando o texto
-  // tem indício de medicação, então na maioria das mensagens a segunda promessa
-  // resolve na hora, sem custo nenhum.
-  const [respostaOuErro, gravados] = await Promise.all([
+  // As TRÊS chamadas saem JUNTAS. A resposta não espera nenhuma das outras duas:
+  // reconhecer no mesmo turno exigiria série, dobrando o tempo até qualquer
+  // reply — inclusive nas mensagens que não ensinam nada, que são a maioria.
+  //
+  // O aprendizado aparece a partir da mensagem SEGUINTE, pelo contexto
+  // enriquecido. Este caminho não envia texto nenhum, então também não cruza a
+  // verificação de segurança logo abaixo.
+  const [respostaOuErro, gravados, aprendido] = await Promise.all([
     chamar({ systemPrompt, mensagens: [{ role: 'user', content: texto }] }).catch((e) => {
       console.error('[conversa] falha na chamada de LLM:', e?.message ?? e)
       return null
     }),
     gravarRemedioDitoNaConversa(usuario, texto, remedios, { extrair, db }),
+    aprenderSobreOPerfil(usuario, texto, { canal, notas, aprender, interacaoId, db }),
   ])
 
   const resposta = respostaOuErro
@@ -166,7 +179,74 @@ async function conversaLivre(usuario, texto, canal, responder, { chamar, extrair
     await enviar(usuario.usuario_id, textoDeConfirmacao(gravados), canal, responder, db)
   }
 
-  return { acao: classe, respondeu: Boolean(resposta), remediosGravados: gravados.length }
+  return {
+    acao: classe,
+    respondeu: Boolean(resposta),
+    remediosGravados: gravados.length,
+    aprendeu: Boolean(aprendido),
+  }
+}
+
+/**
+ * Aprendizado de perfil, em paralelo com a resposta.
+ *
+ * NÃO envia nada: o reconhecimento acontece pelo contexto enriquecido das
+ * mensagens seguintes. Foi a decisão registrada — é a resposta rápida que segura
+ * alguém com TDAH esperando, não o reconhecimento instantâneo.
+ *
+ * Falha vira "não aprendeu nada", sempre. Este caminho não pode, em nenhuma
+ * circunstância, impedir a pessoa de receber a resposta dela.
+ *
+ * @returns {Promise<object|null>} a nota criada, ou null
+ */
+async function aprenderSobreOPerfil(usuario, texto, { canal, notas, aprender, interacaoId, db }) {
+  try {
+    const resultado = await aprender(texto, perfilConhecido(usuario, notas), {})
+    if (!resultado?.aprendeu) return null
+
+    const nota = notasRepo.criarNota(
+      {
+        usuarioId: usuario.usuario_id,
+        campo: resultado.campo,
+        texto: resultado.texto,
+        interacaoId,
+      },
+      db,
+    )
+
+    // Auditoria com o CAMPO e o TEXTO da nota — nunca a mensagem de origem
+    // inteira, que pode conter outro dado sensível sem relação com isto. A
+    // rastreabilidade até a mensagem é a coluna `interacao_id`.
+    registrar(
+      {
+        usuarioId: usuario.usuario_id,
+        tipo: TIPOS_INTERACAO.APRENDIZADO_PERFIL,
+        texto: `${resultado.campo}: "${resultado.texto}"`,
+        canal,
+      },
+      db,
+    )
+
+    return nota
+  } catch (e) {
+    console.error('[conversa] falha no aprendizado de perfil:', e?.message ?? e)
+    return null
+  }
+}
+
+/** O que já se sabe, para o extrator não reaprender. */
+function perfilConhecido(usuario, notas) {
+  const linhas = []
+
+  for (const campo of CAMPOS_APRENDIVEIS) {
+    const original = usuario?.[campo]
+    const doCampo = (notas?.[campo] ?? []).map((n) => n.texto)
+    if (!original && !doCampo.length) continue
+
+    linhas.push(`- ${campo}: ${[original, ...doCampo].filter(Boolean).join(' | ')}`)
+  }
+
+  return linhas.join('\n')
 }
 
 /**

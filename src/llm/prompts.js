@@ -72,9 +72,32 @@ export function mapearRespostaPersonalidade(texto) {
   return null
 }
 
-/** Resumo da anamnese usado como contexto no system prompt. */
-export function montarContextoAnamnese(usuario, remedios = []) {
+/**
+ * Resumo da anamnese usado como contexto no system prompt.
+ *
+ * `notas` são as aprendidas DEPOIS da anamnese, agrupadas por campo. Elas entram
+ * com rótulo próprio, e nunca substituem a resposta original: o que a pessoa
+ * respondeu no dia 1 foi dito sob consentimento formal; o que se aprendeu depois
+ * é inferência de conversa. Sem o rótulo, o modelo trataria as duas com a mesma
+ * confiança.
+ *
+ * Terceiro parâmetro com valor padrão de propósito: quem ainda não passa notas
+ * — teste, ou código anterior a esta mudança — recebe exatamente o contexto de
+ * antes.
+ *
+ * @param {object} usuario
+ * @param {Array} remedios
+ * @param {Record<string, Array<{texto: string, criado_em: string}>>} notas por campo
+ */
+export function montarContextoAnamnese(usuario, remedios = [], notas = {}) {
   const campo = (v) => (v && String(v).trim() ? String(v).trim() : SEM_INFORMACAO)
+
+  const comNotas = (chave, valor) => {
+    const doCampo = notas?.[chave] ?? []
+    if (!doCampo.length) return valor
+    const lista = doCampo.map((n) => `${n.texto} (${dataCurta(n.criado_em)})`).join('; ')
+    return `${valor} | Notas aprendidas depois: ${lista}`
+  }
 
   const listaRemedios = remedios.length
     ? remedios.map((r) => `- ${r.nome} às ${r.horario}`).join('\n')
@@ -82,24 +105,49 @@ export function montarContextoAnamnese(usuario, remedios = []) {
 
   return `CONTEXTO DESTA PESSOA (veio da anamnese; não invente nada além disto):
 - Nome: ${campo(usuario?.nome)}
-- O que mais atrapalha o dia dela: ${campo(usuario?.o_que_trava)}
-- Rotina (horário bom e ruim): ${campo(usuario?.rotina_boa)}
-- Gatilhos de sobrecarga: ${campo(usuario?.gatilhos_de_sobrecarga)}
-- Como ela percebe que está entrando em sobrecarga: ${campo(usuario?.sinal_de_alerta)}
-- Pessoas-chave: ${campo(usuario?.pessoas_chave)}
-- Vocabulário próprio dela (use estas palavras): ${campo(usuario?.vocabulario_proprio)}
-- O QUE VOCÊ NUNCA DEVE FAZER OU DIZER com ela: ${campo(usuario?.nunca_fazer)}
+- O que mais atrapalha o dia dela: ${comNotas('o_que_trava', campo(usuario?.o_que_trava))}
+- Rotina (horário bom e ruim): ${comNotas('rotina_boa', campo(usuario?.rotina_boa))}
+- Gatilhos de sobrecarga: ${comNotas('gatilhos_de_sobrecarga', campo(usuario?.gatilhos_de_sobrecarga))}
+- Como ela percebe que está entrando em sobrecarga: ${comNotas('sinal_de_alerta', campo(usuario?.sinal_de_alerta))}
+- Pessoas-chave: ${comNotas('pessoas_chave', campo(usuario?.pessoas_chave))}
+- Vocabulário próprio dela (use estas palavras): ${comNotas('vocabulario_proprio', campo(usuario?.vocabulario_proprio))}
+- O QUE VOCÊ NUNCA DEVE FAZER OU DIZER com ela: ${comNotas('nunca_fazer', campo(usuario?.nunca_fazer))}
 - Remédios:
-${listaRemedios}`
+${listaRemedios}${explicacaoDasNotas(notas)}`
+}
+
+/**
+ * A explicação só entra quando HÁ nota.
+ *
+ * Sem isso, todo prompt carregaria um parágrafo sobre uma seção que não existe —
+ * e o dia zero desta mudança deixaria de ser idêntico ao dia anterior.
+ */
+function explicacaoDasNotas(notas) {
+  const alguma = Object.values(notas ?? {}).some((lista) => lista?.length)
+  if (!alguma) return ''
+
+  return `
+
+"Notas aprendidas depois" são coisas que ela contou na conversa, não na anamnese. Trate-as como verdadeiras, mas menos firmes que a resposta original — se alguma contradisser o que ela disser agora, o que vale é o agora.`
+}
+
+/** AAAA-MM-DD ou ISO viram DD/MM. */
+function dataCurta(iso) {
+  const m = String(iso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[3]}/${m[2]}` : ''
 }
 
 /**
  * System prompt final: núcleo fixo + variante da personalidade + contexto da anamnese.
  * Personalidade ausente ou desconhecida cai no padrão, em vez de quebrar a conversa.
  */
-export function montarSystemPrompt(usuario, remedios = []) {
+export function montarSystemPrompt(usuario, remedios = [], notas = {}) {
   const escolhida = VARIANTES[usuario?.personalidade] ? usuario.personalidade : PERSONALIDADE_PADRAO
-  return [NUCLEO_FIXO, VARIANTES[escolhida], montarContextoAnamnese(usuario, remedios)].join('\n\n')
+  return [
+    NUCLEO_FIXO,
+    VARIANTES[escolhida],
+    montarContextoAnamnese(usuario, remedios, notas),
+  ].join('\n\n')
 }
 
 /** Prompt de extração de remédio. Reforça a Regra 1b e exige JSON estrito. */
@@ -115,4 +163,45 @@ Se não houver nenhum remédio no texto, responda {"remedios":[]}.
 
 TEXTO:
 ${texto}`
+}
+
+/**
+ * Prompt de extração de APRENDIZADO DE PERFIL.
+ *
+ * O risco aqui não é o da Regra 1b — não é inventar dado, é GENERALIZAR dado
+ * verdadeiro: transformar "hoje o trânsito me deixou louco" num traço permanente
+ * ("gatilho de sobrecarga: trânsito"). Perder uma nota é recuperável; um traço
+ * falso se propaga em silêncio para toda mensagem seguinte.
+ *
+ * Por isso o prompt exige TRÊS coisas juntas e manda recusar na dúvida.
+ */
+export function promptExtracaoAprendizado(mensagem, perfilConhecido, campos) {
+  return `Você lê UMA mensagem de uma pessoa e decide se ela revelou algo novo e permanente sobre si mesma, digno de entrar no perfil dela.
+
+CAPTURE somente se as TRÊS condições valerem ao mesmo tempo:
+1. Ela falou DE SI MESMA (não de outra pessoa, não do mundo).
+2. Ela descreveu algo GERAL ou RECORRENTE — algo que é assim sempre, ou que se repete —, não um episódio de hoje.
+3. É NOVO em relação ao perfil já conhecido abaixo.
+
+NÃO capture, em nenhuma hipótese:
+- queixa pontual, evento de um dia, humor do momento ("hoje foi horrível", "estou cansado");
+- qualquer coisa sobre remédio, dose, horário de medicação — isso é tratado em outro lugar e NÃO é da sua conta aqui;
+- o nome dela;
+- inferência sua. Se você precisou deduzir, a resposta é não.
+
+Na dúvida entre queixa pontual e padrão recorrente, responda que NÃO aprendeu nada. Errar para o lado de não capturar é o comportamento correto.
+
+CAMPOS possíveis (use exatamente um destes valores):
+${campos.join(', ')}
+
+PERFIL JÁ CONHECIDO:
+${perfilConhecido || '(vazio)'}
+
+MENSAGEM:
+${mensagem}
+
+Responda APENAS com JSON válido, sem cercas de código e sem comentário:
+{"aprendeu": true, "campo": "um dos campos acima", "texto": "a frase curta que entra no perfil"}
+ou
+{"aprendeu": false, "campo": null, "texto": null}`
 }

@@ -27,7 +27,7 @@ justamente o que se está tentando validar.
 - **Seção "Aprendizado contínuo" na página do participante**, com remoção por soft
   delete e confirmação em duas etapas.
 - **Tipo novo `aprendizado_perfil` em `historico_interacoes`**, com migração do
-  CHECK — a primeira deste projeto a rodar sobre banco possivelmente já pareado.
+  CHECK — o mesmo procedimento que `src/db/migracoes.js` já executou três vezes.
 
 **Fora de escopo, por decisão:** remédio e nome. Remédio já tem extração própria com
 tratamento de Regra 1b específico para dado de saúde regulado; nome é identidade, não
@@ -45,7 +45,8 @@ traço de perfil. Nenhum dos dois passa por este mecanismo.
 - `armazenamento`: tabela `notas_aprendidas`, tipo `aprendizado_perfil` no CHECK do
   histórico, e a anonimização passando a redigir o texto das notas.
 - `persona`: o contexto do system prompt inclui as notas ativas, rotuladas à parte.
-- `canal-whatsapp`: o chat livre dispara a extração em paralelo com a resposta.
+- `nucleo-conversa`: o chat livre dispara a extração em paralelo com a resposta, no
+  mesmo `Promise.all` em que a extração de remédio já roda.
 - `dashboard-piloto`: a página de detalhe ganha a seção de notas aprendidas.
 
 ## Impact
@@ -53,7 +54,7 @@ traço de perfil. Nenhum dos dois passa por este mecanismo.
 - **Código:** `src/db/schema.sql`, `src/db/migracoes.js` (novo),
   `src/db/notasRepo.js` (novo), `src/db/userRepo.js` (anonimização e reinício),
   `src/constants.js`, `src/anamnese/aprenderPerfil.js` (novo), `src/llm/prompts.js`,
-  `src/whatsapp/handler.js`, `src/dashboard/rotas/usuario.js`,
+  `src/conversa/nucleo.js`, `src/dashboard/rotas/usuario.js`,
   `src/dashboard/rotas/acoes.js`, `test/`.
 - **Dependências:** nenhuma.
 - **Schema:** uma tabela nova (entra sozinha, `CREATE TABLE IF NOT EXISTS`) e uma

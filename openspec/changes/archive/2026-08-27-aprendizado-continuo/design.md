@@ -1,45 +1,66 @@
 ## Context
 
+> **Revisão de arquitetura.** Este documento foi escrito quando o processamento de
+> mensagem morava em `processarMensagemNormal`, dentro de `src/whatsapp/handler.js`.
+> Isso mudou: a mudança `canal-web`, já arquivada, extraiu o núcleo canal-agnóstico
+> para `src/conversa/nucleo.js`. As seções abaixo foram refeitas sobre o código de
+> hoje; as decisões (a), (b) e (c) no fim continuam valendo sem alteração.
+
 O que existe hoje e delimita o desenho:
 
-- `montarContextoAnamnese(usuario, remedios)` em `src/llm/prompts.js` é uma função
-  pura: recebe o usuário e a lista de remédios e devolve texto. Não importa banco.
+- `src/conversa/nucleo.js` é o **único** caminho de decisão dos dois canais.
+  `processarMensagem({ usuario, texto, canal, responder }, deps)` recebe a pessoa já
+  identificada e uma função de envio sem endereço; `conversaLivre` é a parte que trata
+  chat livre.
+- **`conversaLivre` já executa duas chamadas de LLM em paralelo**, num `Promise.all`:
+  a resposta e a extração de remédio dito na conversa. A extração de aprendizado entra
+  como a **terceira promessa do mesmo `Promise.all`** — não é padrão novo, é o padrão
+  que já está lá.
+- `src/conversa/seguranca.js` (`instruiSobreMedicacao`) roda **depois** das chamadas e
+  **antes** do envio: varre a saída do modelo e bloqueia instrução de medicação. Esta
+  mudança **não toca nisso** e não conflita: o mecanismo de aprendizado não envia
+  mensagem nenhuma, então nunca cruza essa verificação. São coisas diferentes com nomes
+  parecidos — uma vigia o que sai, a outra lê o que entra.
+- `montarSystemPrompt(usuario, remedios)` é chamado dentro de `conversaLivre`;
+  `montarContextoAnamnese(usuario, remedios)` em `src/llm/prompts.js` continua função
+  pura, sem banco.
 - `extrairRemedios(texto, deps)` em `src/anamnese/extrairRemedios.js` é o padrão já
-  testado de extração por LLM: prompt estrito, `chamar` injetável, parse defensivo
-  que devolve `[]` em vez de lançar. É esse padrão que se reaproveita aqui.
-- `processarMensagemNormal` em `src/whatsapp/handler.js` já faz uma chamada de LLM
-  por mensagem de chat livre e já trata a falha dela sem derrubar o processo.
-- `CAMPOS_ANAMNESE` em `src/db/userRepo.js` é a whitelist fechada de campos —
-  existe porque o nome do campo vira nome de coluna na query.
+  testado de extração por LLM: prompt estrito, `chamar` injetável, parse defensivo que
+  devolve `[]` em vez de lançar. É esse padrão que se reaproveita aqui.
+- `CAMPOS_ANAMNESE` em `src/db/userRepo.js` é a whitelist fechada de campos — existe
+  porque o nome do campo vira nome de coluna na query.
 - A auditoria tem dois destinos: `historico_interacoes` com `tipo='acao_admin'` para
   ação do operador sobre participante, e `auditoria_admin` para ação sobre a equipe.
 - `confirmacao()` em `src/dashboard/rotas/acoes.js` é a confirmação de duas etapas:
   GET descreve, POST executa.
-- `schema.sql` roda inteiro a cada abertura, com `CREATE TABLE IF NOT EXISTS`.
-  Tabela nova entra sozinha em banco existente; **constraint alterada não**.
+- `src/db/migracoes.js` já implementa a migração de CHECK completa, e já foi usada três
+  vezes. O sentinela de idempotência aponta sempre para o valor mais novo da lista.
 
 ### Colisão com as mudanças ativas
 
-**`admin-backend-fase2` — `0/49 tasks`, nada implementado.** Ela toca os mesmos três
-arquivos, e a verificação foi feita item a item:
+**`admin-backend-fase2` — `0/49 tasks`, nada implementado.** Conferido de novo agora, e
+o resultado não mudou:
 
 | O que a Fase 2 muda | Colide? |
 |---|---|
 | `NUCLEO_FIXO` e `VARIANTES` passam a vir do conteúdo versionado | **Não.** São outras partes do system prompt; o contexto da anamnese continua vindo dos parâmetros. |
 | Texto de `PERGUNTAS` e `TEXTO_CONSENTIMENTO` vem do banco | **Não.** Esta mudança não toca `src/anamnese/questions.js`. |
-| Debounce antes de `processarMensagemNormal` | **Não — compõe.** O buffer agrupa e entrega texto concatenado; a extração entra *dentro* de `processarMensagemNormal` e passa a ver o texto já agrupado, que é o comportamento desejado: extrair da rajada inteira, não de cada fragmento. |
+| Debounce antes do núcleo | **Não — compõe.** O buffer agrupa e entrega texto concatenado; a extração vive *dentro* de `conversaLivre` e passa a ver o texto já agrupado, que é o comportamento desejado: extrair da rajada inteira, não de cada fragmento. |
 | `config_global` / ordem de leitura em três degraus | **Não.** Nenhuma chave nova de configuração aqui. |
 
 **A interface mínima que funciona nas duas ordens de implementação é aditiva:**
 `montarContextoAnamnese(usuario, remedios, notas = [])` e
-`montarSystemPrompt(usuario, remedios, notas = [])`. Terceiro parâmetro posicional,
-com valor padrão. Se a Fase 2 chegar primeiro e trocar a origem do núcleo fixo, o
-terceiro parâmetro continua válido; se esta chegar primeiro, a Fase 2 mexe em outra
-parte da mesma função sem tocar na assinatura. Nenhuma das duas precisa esperar a
-outra, e nenhuma precisa ser reescrita quando a segunda chegar.
+`montarSystemPrompt(usuario, remedios, notas = [])`. Terceiro parâmetro posicional, com
+valor padrão. Se a Fase 2 chegar primeiro e trocar a origem do núcleo fixo, o terceiro
+parâmetro continua válido; se esta chegar primeiro, a Fase 2 mexe em outra parte da
+mesma função sem tocar na assinatura. Nenhuma das duas precisa esperar a outra.
 
-**`conexao-llm` — `24/29 tasks`.** Nenhuma colisão: ela resolve de onde vem a
-credencial. Esta mudança usa `chamarLLM` como está, e herda a chave e o modelo que
+Vale para a chamada também: hoje `conversaLivre` faz `montarSystemPrompt(usuario,
+remedios)`; passa a fazer `montarSystemPrompt(usuario, remedios, notas)`. Uma linha, no
+único lugar onde o prompt é montado para conversa.
+
+**`conexao-llm` — arquivada e implantada.** Nenhuma colisão: ela resolveu de onde vem
+a credencial. Esta mudança usa `chamarLLM` como está, e herda a chave e o modelo que
 estiverem valendo.
 
 ## Goals / Non-Goals

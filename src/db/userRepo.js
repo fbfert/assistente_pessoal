@@ -1,5 +1,6 @@
 import { getDb } from './db.js'
 import { apagarDoUsuario as apagarSessoesDoUsuario } from './sessaoWebRepo.js'
+import { apagarNotasDoUsuario, redigirNotasDoUsuario } from './notasRepo.js'
 import {
   SEM_INFORMACAO,
   REDIGIDO,
@@ -24,6 +25,21 @@ export const CAMPOS_ANAMNESE = Object.freeze([
   'vocabulario_proprio',
   'nunca_fazer',
 ])
+
+/**
+ * Campos que o aprendizado contínuo pode preencher.
+ *
+ * DERIVADO de `CAMPOS_ANAMNESE`, nunca redigitado: duas listas independentes
+ * divergem no primeiro campo novo.
+ *
+ * `nome` sai porque é identidade, não traço — o bot "aprender" um nome diferente
+ * do que a pessoa pediu para ser chamada seria regressão, não aprendizado.
+ *
+ * Remédio não está aqui porque não está em CAMPOS_ANAMNESE (vive em tabela
+ * própria) — e continua sendo assunto exclusivo de `extrairRemedios`, que tem
+ * tratamento de Regra 1b específico para dado de saúde regulado.
+ */
+export const CAMPOS_APRENDIVEIS = Object.freeze(CAMPOS_ANAMNESE.filter((c) => c !== 'nome'))
 
 const agora = () => new Date().toISOString()
 
@@ -416,6 +432,8 @@ export function reiniciarAnamnese(usuarioId, db = getDb()) {
     db.prepare('DELETE FROM gatilhos_configurados WHERE usuario_id = ?').run(usuarioId)
     db.prepare('DELETE FROM remedios WHERE usuario_id = ?').run(usuarioId)
     db.prepare('DELETE FROM contadores WHERE usuario_id = ?').run(usuarioId)
+    // Notas construídas sobre o perfil velho contaminariam o novo.
+    apagarNotasDoUsuario(usuarioId, db)
     db.prepare(
       `UPDATE usuarios
           SET ${limpar},
@@ -461,6 +479,10 @@ export function anonimizarParticipante(usuarioId, db = getDb()) {
     // A sessão web é APAGADA, não redigida: uma credencial viva depois da saída
     // do piloto seria acesso a um dado que a pessoa pediu para encerrar.
     apagarSessoesDoUsuario(usuarioId, db)
+
+    // O texto das notas é conteúdo escrito pela própria pessoa, recortado da
+    // conversa. Redigir tudo menos as notas seria fachada.
+    redigirNotasDoUsuario(usuarioId, REDIGIDO, db)
 
     db.prepare('UPDATE remedios SET nome = ?, horario = ? WHERE usuario_id = ?').run(
       REDIGIDO,

@@ -500,6 +500,56 @@ describe('convite: convidar × reiniciar são ações distintas', () => {
     assert.equal(repo.findById(u.usuario_id, db).anamnese_estado, 12, 'progresso preservado')
   })
 
+  test('as notas aprendidas aparecem na página, agrupadas por campo', async () => {
+    const u = participante('+5511900000040')
+    const notasRepo = await import('../src/db/notasRepo.js')
+    notasRepo.criarNota(
+      { usuarioId: u.usuario_id, campo: 'o_que_trava', texto: 'reunião longa' },
+      db,
+    )
+    notasRepo.criarNota(
+      { usuarioId: u.usuario_id, campo: 'nunca_fazer', texto: 'cobrar de manhã' },
+      db,
+    )
+
+    const html = await (await get(`/usuarios/${u.usuario_id}`)).text()
+
+    assert.match(html, /Aprendizado contínuo/)
+    assert.match(html, /reunião longa/)
+    assert.match(html, /cobrar de manhã/)
+    // A frase tem marcação no meio ("<strong>não</strong> substitui"); o que
+    // importa é a ideia estar dita em texto corrido.
+    assert.match(html, /empilha por cima/i, 'a tela precisa dizer que empilha, não substitui')
+  })
+
+  test('remover nota passa por confirmação e é soft delete auditado', async () => {
+    const u = participante('+5511900000041')
+    const notasRepo = await import('../src/db/notasRepo.js')
+    const nota = notasRepo.criarNota(
+      { usuarioId: u.usuario_id, campo: 'o_que_trava', texto: 'reunião longa' },
+      db,
+    )
+
+    // Etapa 1: a página em GET descreve o efeito e não altera nada.
+    const confirmacao = await get(`/usuarios/${u.usuario_id}/nota/${nota.nota_id}/remover`)
+    assert.equal(confirmacao.status, 200)
+    assert.match(await confirmacao.text(), /continua no banco/i)
+    assert.equal(notasRepo.buscarNota(nota.nota_id, db).removido_em, null, 'GET não altera')
+
+    // Etapa 2: o POST executa.
+    const r = await post(`/usuarios/${u.usuario_id}/nota/${nota.nota_id}/remover`, {})
+    assert.equal(r.status, 302)
+
+    const depois = notasRepo.buscarNota(nota.nota_id, db)
+    assert.ok(depois, 'soft delete: a linha continua')
+    assert.ok(depois.removido_em)
+    assert.match(auditorias(u.usuario_id).at(-1).texto, /nota aprendida removida/)
+    assert.match(auditorias(u.usuario_id).at(-1).texto, /reunião longa/)
+
+    const html = await (await get(`/usuarios/${u.usuario_id}`)).text()
+    assert.match(html, /<s>reunião longa<\/s>/, 'fica riscada, não some')
+  })
+
   test('correção reportada aparece em destaque, com link para o participante', async () => {
     const u = participante('+5511900000039')
     log.registrar(
