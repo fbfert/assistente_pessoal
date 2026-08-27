@@ -48,6 +48,15 @@ o resultado não mudou:
 | Debounce antes do núcleo | **Não — compõe.** O buffer agrupa e entrega texto concatenado; a extração vive *dentro* de `conversaLivre` e passa a ver o texto já agrupado, que é o comportamento desejado: extrair da rajada inteira, não de cada fragmento. |
 | `config_global` / ordem de leitura em três degraus | **Não.** Nenhuma chave nova de configuração aqui. |
 
+E a mudança que já rodou:
+
+| `canal-web` (arquivada) | Colide? |
+|---|---|
+| Extraiu o núcleo canal-agnóstico para `src/conversa/nucleo.js` | **Não — habilita.** Integrar ali dá aprendizado contínuo aos DOIS canais de graça, sem duplicar nada. Era a razão de a integração original apontar para `handler.js`; hoje aquele arquivo é adaptador fino e não decide nada. |
+| Acrescentou a coluna `canal` e o tipo `entrada_web` ao histórico | **Não.** A linha de auditoria do aprendizado grava o canal como qualquer outra; o tipo novo entra pela mesma migração de CHECK. |
+| `conversa-confiavel` acrescentou `mensagem_enviada` e a extração de remédio em paralelo | **Não — o caminho já está pronto.** A extração de aprendizado entra como terceira promessa do `Promise.all` que já existe. |
+| `seguranca-instrucao-medicacao` acrescentou o bloqueio determinístico antes do envio | **Não.** O aprendizado não envia mensagem nenhuma, então nunca cruza a verificação que examina a saída do modelo. Nomes parecidos, mecanismos opostos: uma vigia o que sai, a outra lê o que entra. |
+
 **A interface mínima que funciona nas duas ordens de implementação é aditiva:**
 `montarContextoAnamnese(usuario, remedios, notas = [])` e
 `montarSystemPrompt(usuario, remedios, notas = [])`. Terceiro parâmetro posicional, com
