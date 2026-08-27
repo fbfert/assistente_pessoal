@@ -101,6 +101,8 @@ describe('detecção determinística', () => {
       'Você já tomou o Vortex hoje?',
       'Talvez valha atrasar o Bup.',
       'Pode tomar o vortex agora.',
+      'Continue tomando o Bup como está.',
+      'Volte a tomar o Vortex à noite.',
     ]) {
       assert.equal(instruiSobreMedicacao(texto, remedios).bloqueia, true, texto)
     }
@@ -109,6 +111,10 @@ describe('detecção determinística', () => {
   test('nome sem verbo, ou verbo em outra frase, passa', () => {
     for (const texto of [
       'Vejo que você tem Vortex cadastrado, sem horário.',
+      // Caso REAL de produção: resposta a "o que já sabe sobre mim?". É descrição
+      // do cadastro, não instrução — bloqueá-la quebrava um fluxo legítimo.
+      'Você está tomando Vortex e Bup, mas não sei os horários ou doses.',
+      'Você toma Vortex e Bup, pelo que me contou.',
       'O Vortex está no teu cadastro sem horário. Comece pela tarefa mais fácil.',
       RESPOSTA_SEGURA,
       'Hoje foi puxado mesmo. Quer me contar o que pesou?',

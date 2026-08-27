@@ -21,7 +21,12 @@
  * prompt continua sendo a primeira camada, e não a única.
  */
 const VERBOS_DE_INSTRUCAO = Object.freeze([
-  'tome', 'toma', 'tomar', 'tomou', 'tomando', 'tomasse',
+  'tome', 'tomar', 'tomou', 'tomasse',
+  // `toma` e `tomando` saíram: sozinhos são DESCRIÇÃO, não instrução. Custaram um
+  // falso positivo real — "Você está tomando Vortex e Bup, mas não sei os
+  // horários" era resposta legítima a "o que já sabe sobre mim?" e teria sido
+  // bloqueada. As formas instrutivas do gerúndio entram nomeadas.
+  'continue tomando', 'volte a tomar', 'siga tomando', 'passe a tomar',
   'comece', 'comeca', 'comecar', 'iniciar', 'inicie',
   'pode tomar', 'ja tomou', 'nao tomou', 'tomou hoje',
   'hora do', 'hora da', 'horario do', 'horario da',
