@@ -1202,3 +1202,185 @@ describe('tela de gatilhos', () => {
     assert.equal(r.headers.get('location'), '/login')
   })
 })
+
+describe('tela de IA e persona', () => {
+  let chamadas
+
+  before(async () => {
+    cookie = await autenticar()
+  })
+
+  beforeEach(async () => {
+    chamadas = []
+    const { _limparUsos } = await import('../src/dashboard/rotas/ia.js')
+    _limparUsos()
+  })
+
+  /** Intercepta a chamada ao provedor sem tocar na rede. */
+  async function comLLM(resposta, corpo) {
+    const original = globalThis.fetch
+    globalThis.fetch = async (url, opcoes) => {
+      if (String(url).startsWith(base)) return original(url, opcoes)
+      chamadas.push(JSON.parse(opcoes.body))
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: resposta } }],
+          content: [{ type: 'text', text: resposta }],
+        }),
+      }
+    }
+
+    const { config } = await import('../src/config.js')
+    const provedor = config.llm.defaultProvider
+    const chaveAntes = config.llm[provedor].apiKey
+    config.llm[provedor].apiKey = 'chave-de-teste'
+
+    try {
+      return await corpo()
+    } finally {
+      globalThis.fetch = original
+      config.llm[provedor].apiKey = chaveAntes
+    }
+  }
+
+  test('reúne núcleo e variantes, e manda o provedor para Credenciais', async () => {
+    const html = await (await get('/ia')).text()
+
+    assert.match(html, /Núcleo fixo de regras/)
+    for (const v of ['direto', 'caloroso', 'neutro']) {
+      assert.match(html, new RegExp(`Variante de tom: ${v}`))
+    }
+    assert.match(html, /<a href="\/credenciais">Credenciais<\/a>/)
+    assert.ok(!/name="apiKey"/.test(html), 'chave de API não aparece nesta tela')
+  })
+
+  test('o núcleo fixo exige a palavra de confirmação', async () => {
+    const antes = conteudo.ler('nucleo_fixo', db)
+
+    const semPalavra = await post('/ia/conteudo/nucleo_fixo', { conteudo: 'Núcleo qualquer.' })
+    assert.equal(semPalavra.status, 400)
+    assert.equal(conteudo.ler('nucleo_fixo', db), antes, 'nada mudou')
+
+    const errada = await post('/ia/conteudo/nucleo_fixo', {
+      conteudo: 'Núcleo qualquer.',
+      confirmacao: 'sim',
+    })
+    assert.equal(errada.status, 400)
+    assert.equal(conteudo.ler('nucleo_fixo', db), antes)
+  })
+
+  test('a tela de confirmação do núcleo avisa do risco e pede a palavra', async () => {
+    const html = await (
+      await post('/ia/conteudo/nucleo_fixo/confirmar', { conteudo: 'Núcleo de teste.' })
+    ).text()
+
+    assert.match(html, /regras de segurança/)
+    assert.match(html, /1c/)
+    assert.match(html, /name="confirmacao"/)
+    assert.equal(conteudo.ler('nucleo_fixo', db).includes('Núcleo de teste.'), false)
+  })
+
+  test('com a palavra certa, grava — e restaura depois', async () => {
+    const r = await post('/ia/conteudo/nucleo_fixo', {
+      conteudo: 'Núcleo de teste com regras.',
+      confirmacao: 'nucleo_fixo',
+    })
+
+    assert.equal(r.status, 302)
+    assert.equal(conteudo.ler('nucleo_fixo', db), 'Núcleo de teste com regras.')
+
+    await post('/ia/conteudo/nucleo_fixo/restaurar', { confirmacao: 'nucleo_fixo' })
+    assert.match(conteudo.ler('nucleo_fixo', db), /1c\. Você NUNCA instrui/)
+  })
+
+  test('variante usa a confirmação simples, sem palavra', async () => {
+    const r = await post('/ia/conteudo/variante_neutro', { conteudo: 'PERSONALIDADE: NEUTRO. Teste.' })
+
+    assert.equal(r.status, 302)
+    assert.equal(conteudo.ler('variante_neutro', db), 'PERSONALIDADE: NEUTRO. Teste.')
+
+    await post('/ia/conteudo/variante_neutro/restaurar', {})
+  })
+
+  test('chave que não é desta tela devolve 404', async () => {
+    assert.equal(
+      (await post('/ia/conteudo/mensagem_checkin_manha', { conteudo: 'x' })).status,
+      404,
+    )
+  })
+
+  test('o teste chama o LLM e NÃO deixa rastro em historico_interacoes', async () => {
+    const antes = db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
+
+    const r = await comLLM('Beleza. Uma coisa pequena agora?', () =>
+      post('/ia/testar', { mensagem: 'to sem energia', variante: 'direto' }),
+    )
+
+    assert.equal(r.status, 200)
+    assert.match(await r.text(), /Beleza. Uma coisa pequena agora\?/)
+    assert.equal(chamadas.length, 1, 'a chamada foi feita de verdade')
+    assert.equal(
+      db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n,
+      antes,
+      'teste isolado não pode gravar interação',
+    )
+  })
+
+  test('o contexto do teste é FICTÍCIO, nunca de um participante real', async () => {
+    const real = participante('+5511900000060')
+    repo.salvarCampoAnamnese(real.usuario_id, 'nome', 'NomeRealDoParticipante', db)
+
+    await comLLM('ok', () => post('/ia/testar', { mensagem: 'oi', variante: 'neutro' }))
+
+    const prompt = chamadas[0].messages[0].content
+    assert.match(prompt, /Sofia \(exemplo\)/)
+    assert.ok(!prompt.includes('NomeRealDoParticipante'), 'dado real vazou para o teste')
+  })
+
+  test('testa o RASCUNHO, não só o que está salvo', async () => {
+    await comLLM('ok', () =>
+      post('/ia/testar', {
+        mensagem: 'oi',
+        variante: 'direto',
+        nucleo: 'NUCLEO DE RASCUNHO NAO SALVO',
+        conteudoVariante: 'VARIANTE DE RASCUNHO',
+      }),
+    )
+
+    const prompt = chamadas[0].messages[0].content
+    assert.match(prompt, /NUCLEO DE RASCUNHO NAO SALVO/)
+    assert.match(prompt, /VARIANTE DE RASCUNHO/)
+    assert.notEqual(conteudo.ler('nucleo_fixo', db), 'NUCLEO DE RASCUNHO NAO SALVO')
+  })
+
+  test('avisa quando a resposta SERIA bloqueada pela verificação de medicação', async () => {
+    const r = await comLLM('Comece pelo Venvanse agora, se ainda não tomou hoje.', () =>
+      post('/ia/testar', { mensagem: 'o que faço primeiro?', variante: 'direto' }),
+    )
+
+    assert.match(await r.text(), /seria BLOQUEADA/)
+  })
+
+  test('o limite por hora recusa depois do teto, sem chamar o provedor', async () => {
+    const limite = cfg.ler('TESTE_IA_LIMITE_HORA', db)
+    cfg.escrever('TESTE_IA_LIMITE_HORA', '2', null, db)
+
+    await comLLM('ok', async () => {
+      for (let i = 0; i < 2; i++) {
+        await post('/ia/testar', { mensagem: `teste ${i}`, variante: 'neutro' })
+      }
+      const r = await post('/ia/testar', { mensagem: 'passou do teto', variante: 'neutro' })
+      assert.match(await r.text(), /Limite de 2 testes por hora/)
+    })
+
+    assert.equal(chamadas.length, 2, 'a terceira não chegou ao provedor')
+
+    cfg.escrever('TESTE_IA_LIMITE_HORA', String(limite), null, db)
+  })
+
+  test('exige sessão', async () => {
+    assert.equal((await cru('/ia')).status, 302)
+  })
+})

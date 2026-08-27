@@ -58,14 +58,14 @@
 
 ## 5. Tela de IA / Persona
 
-- [ ] 5.1 Núcleo e três variantes numa tela; provedor ativo em leitura, com link
+- [x] 5.1 Núcleo e três variantes numa tela; provedor ativo em leitura, com link
       para `/credenciais`, que é quem o edita
-- [ ] 5.2 Confirmação reforçada valendo também por este caminho
-- [ ] 5.3 Teste de mensagem: contexto fictício, rascunho não salvo, resposta na tela
-- [ ] 5.4 Limite de 20 por administrador/hora, teto vindo da configuração viva;
+- [x] 5.2 Confirmação reforçada valendo também por este caminho
+- [x] 5.3 Teste de mensagem: contexto fictício, rascunho não salvo, resposta na tela
+- [x] 5.4 Limite de 20 por administrador/hora, teto vindo da configuração viva;
       zero desliga; ao recusar, não chama o provedor
-- [ ] 5.5 Falha do provedor exibida sem derrubar a página
-- [ ] 5.6 Testes: LLM mockado, zero rastro em `historico_interacoes`, confirmação
+- [x] 5.5 Falha do provedor exibida sem derrubar a página
+- [x] 5.6 Testes: LLM mockado, zero rastro em `historico_interacoes`, confirmação
       reforçada exigida
 
 ## 6. Consentimento versionado
