@@ -16,6 +16,13 @@ export const ACOES = Object.freeze({
   TROCOU_PROPRIA_SENHA: 'trocou_propria_senha',
   ENTROU: 'entrou',
   CONFIGUROU_CREDENCIAL: 'configurou_credencial',
+  /**
+   * Mudança na configuração viva — número, horário, texto do produto.
+   *
+   * Vai para cá, e não para `historico_interacoes`, porque é ação sobre o
+   * SISTEMA: não tem participante associado, e aquela tabela exige um.
+   */
+  CONFIGUROU_SISTEMA: 'configurou_sistema',
 })
 
 /** A senha gerada NUNCA entra aqui — nem na descrição. */

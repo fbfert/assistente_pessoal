@@ -171,7 +171,8 @@ CREATE TABLE IF NOT EXISTS auditoria_admin (
   acao         TEXT    NOT NULL
                        CHECK (acao IN ('criou', 'desativou', 'reativou',
                                        'resetou_senha', 'trocou_propria_senha',
-                                       'entrou', 'configurou_credencial')),
+                                       'entrou', 'configurou_credencial',
+                                       'configurou_sistema')),
   descricao    TEXT    NOT NULL,
   momento      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -226,3 +227,36 @@ CREATE TABLE IF NOT EXISTS notas_aprendidas (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notas_usuario_campo ON notas_aprendidas (usuario_id, campo);
+
+-- Configuração viva: valor CURTO e TIPADO, editável pela interface.
+--
+-- Texto longo (núcleo fixo, variantes, mensagens de gatilho) NÃO mora aqui: vai
+-- para prompts_versionados. Os dois formatos exigem validações incompatíveis --
+-- faixa numérica e formato de horário de um lado, presença e tamanho do outro --
+-- e uma tabela única precisaria de uma coluna `tipo` significando coisas que não
+-- se comparam.
+--
+-- A chave de API de provedor NUNCA entra aqui, e o provedor ATIVO também não: ele
+-- é da tela de credenciais (arquivo no volume, ver conexao-llm). Duas fontes de
+-- verdade para o mesmo botão é o tipo de bug que se paga caro depois.
+CREATE TABLE IF NOT EXISTS config_global (
+  chave          TEXT    PRIMARY KEY,
+  valor          TEXT    NOT NULL,
+  tipo           TEXT    NOT NULL CHECK (tipo IN ('numero', 'horario', 'texto_curto')),
+  atualizado_em  TEXT    NOT NULL DEFAULT (datetime('now')),
+  -- Sem ON DELETE: conta de administrador se desativa, nunca se apaga.
+  atualizado_por INTEGER REFERENCES admin_usuarios(admin_id)
+);
+
+-- Append-only. Guarda o valor ANTERIOR a cada escrita -- inclusive a reversão,
+-- que é uma escrita como qualquer outra e não apaga rastro nenhum.
+CREATE TABLE IF NOT EXISTS config_historico (
+  historico_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chave        TEXT    NOT NULL,
+  valor_antigo TEXT,
+  alterado_em  TEXT    NOT NULL DEFAULT (datetime('now')),
+  alterado_por INTEGER REFERENCES admin_usuarios(admin_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_config_historico_chave
+  ON config_historico (chave, alterado_em);

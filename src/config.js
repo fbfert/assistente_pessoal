@@ -1,11 +1,27 @@
 import 'dotenv/config'
 import { dirname, join } from 'node:path'
 import { modeloTranscricao } from './llm/chavesRepo.js'
+import { ler as lerConfig } from './db/configRepo.js'
 
 /**
  * Configuração única do app. Todo o resto lê daqui — nenhum módulo acessa
  * process.env diretamente, para que trocar de provedor ou de janela seja
  * mexer em um lugar só.
+ *
+ * ATUALIZAÇÃO — a frase acima continua verdadeira, mas o `.env` deixou de ser o
+ * primeiro degrau para parte das chaves. As que aparecem abaixo como GETTER são
+ * lidas em três degraus: `config_global` no banco, depois a variável de ambiente
+ * (para as que têm uma), depois a constante do código.
+ *
+ * São getters, e não valores, por dois motivos que se somam: a configuração muda
+ * pela interface sem reinício, e o bot e o admin são processos separados — um
+ * valor lido na subida faria o operador editar numa tela e o bot seguir com o
+ * número velho, sem ninguém perceber. O cache do repositório evita a consulta
+ * repetida; a validade dele é conferida por leitura.
+ *
+ * O import de `configRepo` fecha um ciclo com este arquivo (ele lê
+ * `config.db.path` por baixo). É seguro porque nenhum dos dois lados toca no
+ * outro durante a avaliação do módulo — só dentro de função.
  */
 
 const num = (valor, padrao) => {
@@ -102,6 +118,38 @@ export const config = {
     atrasoFalhaMs: num(process.env.WEB_ATRASO_FALHA_MS, 1000),
   },
 
+  /**
+   * Janela, em minutos, para uma mensagem contar como resposta ao último gatilho.
+   * Editável pela interface — ver `configRepo`.
+   */
+  get respostaGatilhoJanelaMin() {
+    return lerConfig('RESPOSTA_GATILHO_JANELA_MIN')
+  },
+
+  /** Silêncios consecutivos do mesmo gatilho até o tom ficar mais curto. */
+  get silenciosAteReduzirTom() {
+    return lerConfig('SILENCIOS_ATE_REDUZIR_TOM')
+  },
+
+  /** Horários com que os gatilhos padrão nascem para participante NOVO. */
+  get horarioPadraoCheckin() {
+    return lerConfig('HORARIO_PADRAO_CHECKIN')
+  },
+
+  get horarioPadraoChecklist() {
+    return lerConfig('HORARIO_PADRAO_CHECKLIST')
+  },
+
+  /** Segundos de agrupamento no chat livre do WhatsApp. Zero = desligado. */
+  get debounceSegundos() {
+    return lerConfig('DEBOUNCE_SEGUNDOS')
+  },
+
+  /** Testes de persona por administrador e hora. Zero = sem limite. */
+  get testeIaLimiteHora() {
+    return lerConfig('TESTE_IA_LIMITE_HORA')
+  },
+
   timezone: process.env.TZ || 'America/Sao_Paulo',
 
   db: {
@@ -144,8 +192,6 @@ export const config = {
 
   // Os dois números "no chute" do piloto. Existem como env justamente porque
   // não há base empírica para nenhum dos dois — o piloto é que vai calibrá-los.
-  respostaGatilhoJanelaMin: num(process.env.RESPOSTA_GATILHO_JANELA_MIN, 120),
-  silenciosAteReduzirTom: num(process.env.SILENCIOS_ATE_REDUZIR_TOM, 3),
 }
 
 export default config

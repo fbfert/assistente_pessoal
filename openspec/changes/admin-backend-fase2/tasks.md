@@ -5,29 +5,31 @@
 
 ## 1. Schema e repositórios
 
-- [ ] 1.1 Tabelas `config_global` e `config_historico`
+- [x] 1.1 Tabelas `config_global` e `config_historico`
 - [ ] 1.2 Tabelas `prompts_versionados` e `prompts_historico`
-- [ ] 1.3 Reconfirmar o estado do banco antes de recriar — e recriar
-- [ ] 1.4 `src/db/configRepo.js`: ler, gravar, listar histórico, reverter
+- [x] 1.3 Reconfirmar o estado do banco antes de recriar — conferido na hora antes do
+      deploy: WhatsApp não pareado, 28 linhas de auditoria e 121 de histórico; depois
+      da migração de CHECK, as mesmas 28 e 121, com o índice preservado
+- [x] 1.4 `src/db/configRepo.js`: ler, gravar, listar histórico, reverter
 - [ ] 1.5 `src/db/conteudoRepo.js`: idem, para texto longo
 - [ ] 1.6 Semente na primeira leitura, a partir da constante do código
-- [ ] 1.7 Restaurar padrão de fábrica volta à constante, não à linha mais antiga
-- [ ] 1.8 Cache com validação por `MAX(atualizado_em)` — o bot e o admin são
+- [x] 1.7 Restaurar padrão de fábrica volta à constante, não à linha mais antiga
+- [x] 1.8 Cache com validação por `MAX(atualizado_em)` — o bot e o admin são
       processos separados, e cache invalidado só na escrita deixaria o bot com o
       texto velho
 
 ## 2. Config viva ligada ao app
 
-- [ ] 2.1 `config.js` com a ordem de três degraus: banco, ambiente, constante
-- [ ] 2.2 Comentar a mudança no arquivo, que hoje é explícito sobre "nenhum módulo
+- [x] 2.1 `config.js` com a ordem de três degraus: banco, ambiente, constante
+- [x] 2.2 Comentar a mudança no arquivo, que hoje é explícito sobre "nenhum módulo
       acessa process.env diretamente"
-- [ ] 2.3 Chaves: janela de resposta, limiar de silêncio, horários padrão,
+- [x] 2.3 Chaves: janela de resposta, limiar de silêncio, horários padrão,
       `DEBOUNCE_SEGUNDOS`, `TESTE_IA_LIMITE_HORA` — o provedor ativo NÃO entra
       aqui: é da tela de credenciais (`conexao-llm`, decisão (f))
-- [ ] 2.4 Validação por tipo: faixa numérica e formato de horário
-- [ ] 2.5 Chave de API recusada — nunca aceita nem exibida
-- [ ] 2.6 Histórico e auditoria em toda gravação e reversão
-- [ ] 2.7 Testes: os três degraus de leitura, validação recusando, histórico,
+- [x] 2.4 Validação por tipo: faixa numérica e formato de horário
+- [x] 2.5 Chave de API recusada — nunca aceita nem exibida
+- [x] 2.6 Histórico e auditoria em toda gravação e reversão
+- [x] 2.7 Testes: os três degraus de leitura, validação recusando, histórico,
       reversão gerando linha nova sem apagar as anteriores
 
 ## 3. Conteúdo versionado

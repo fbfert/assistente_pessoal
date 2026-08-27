@@ -46,6 +46,7 @@ export function migrar(db) {
   }
 
   if (ampliarTiposDeInteracao(db)) aplicadas.push('historico_interacoes.tipo (+aprendizado_perfil)')
+  if (ampliarAcoesDeAuditoria(db)) aplicadas.push('auditoria_admin.acao (+configurou_sistema)')
 
   if (aplicadas.length) console.log(`[db] migrações aplicadas: ${aplicadas.join(', ')}`)
 
@@ -118,6 +119,67 @@ function ampliarTiposDeInteracao(db) {
       const depois = db.prepare('SELECT COUNT(*) n FROM historico_interacoes').get().n
       if (depois !== antes) {
         // Dentro da transação: lançar aqui desfaz tudo.
+        throw new Error(`migração perderia linhas: ${antes} antes, ${depois} depois`)
+      }
+    })()
+  } finally {
+    if (estavamLigadas) db.pragma('foreign_keys = ON')
+  }
+
+  return true
+}
+
+/**
+ * Acrescenta `configurou_sistema` ao CHECK de `auditoria_admin.acao`.
+ *
+ * Mesmo procedimento da outra migração de CHECK — e por isso mesmo vale dizer por
+ * que não é a mesma função: `auditoria_admin` tem outras colunas, outras chaves
+ * estrangeiras e nenhum índice composto a recriar. Generalizar as duas num
+ * "recriador de tabela" exigiria passar a definição inteira como parâmetro, que é
+ * a mesma coisa escrita de um jeito mais difícil de ler.
+ *
+ * @returns {boolean} true quando a migração rodou agora
+ */
+function ampliarAcoesDeAuditoria(db) {
+  const definicao = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'auditoria_admin'")
+    .get()?.sql
+
+  if (!definicao || definicao.includes('configurou_sistema')) return false
+
+  const antes = db.prepare('SELECT COUNT(*) n FROM auditoria_admin').get().n
+  const estavamLigadas = db.pragma('foreign_keys', { simple: true })
+
+  db.pragma('foreign_keys = OFF')
+  try {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE auditoria_admin_novo (
+          auditoria_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          autor_id     INTEGER REFERENCES admin_usuarios(admin_id),
+          alvo_id      INTEGER REFERENCES admin_usuarios(admin_id),
+          acao         TEXT    NOT NULL
+                               CHECK (acao IN ('criou', 'desativou', 'reativou',
+                                               'resetou_senha', 'trocou_propria_senha',
+                                               'entrou', 'configurou_credencial',
+                                               'configurou_sistema')),
+          descricao    TEXT    NOT NULL,
+          momento      TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO auditoria_admin_novo
+               (auditoria_id, autor_id, alvo_id, acao, descricao, momento)
+        SELECT  auditoria_id, autor_id, alvo_id, acao, descricao, momento
+          FROM  auditoria_admin;
+
+        DROP TABLE auditoria_admin;
+        ALTER TABLE auditoria_admin_novo RENAME TO auditoria_admin;
+
+        CREATE INDEX IF NOT EXISTS idx_auditoria_admin_momento ON auditoria_admin (momento);
+      `)
+
+      const depois = db.prepare('SELECT COUNT(*) n FROM auditoria_admin').get().n
+      if (depois !== antes) {
         throw new Error(`migração perderia linhas: ${antes} antes, ${depois} depois`)
       }
     })()

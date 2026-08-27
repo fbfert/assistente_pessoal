@@ -1,13 +1,8 @@
 import { getDb } from './db.js'
 import { apagarDoUsuario as apagarSessoesDoUsuario } from './sessaoWebRepo.js'
 import { apagarNotasDoUsuario, redigirNotasDoUsuario } from './notasRepo.js'
-import {
-  SEM_INFORMACAO,
-  REDIGIDO,
-  TIPOS_GATILHO,
-  HORARIO_PADRAO_CHECKIN,
-  HORARIO_PADRAO_CHECKLIST,
-} from '../constants.js'
+import { SEM_INFORMACAO, REDIGIDO, TIPOS_GATILHO } from '../constants.js'
+import { config } from '../config.js'
 
 /**
  * Campos de anamnese graváveis pelo setter genérico.
@@ -267,7 +262,9 @@ export function ativarGatilhosPadrao(usuarioId, db = getDb()) {
   const criados = []
 
   criados.push(
-    configurarGatilho(usuarioId, TIPOS_GATILHO.CHECKIN_MANHA, HORARIO_PADRAO_CHECKIN, 1, null, db),
+    // Horário lido da configuração viva NO MOMENTO da conclusão: mudar o padrão
+    // depois não retroage sobre quem já foi configurado, e é assim de propósito.
+    configurarGatilho(usuarioId, TIPOS_GATILHO.CHECKIN_MANHA, config.horarioPadraoCheckin, 1, null, db),
   )
 
   for (const remedio of listarRemedios(usuarioId, db)) {
@@ -283,7 +280,7 @@ export function ativarGatilhosPadrao(usuarioId, db = getDb()) {
     configurarGatilho(
       usuarioId,
       TIPOS_GATILHO.CHECKLIST_FIM_DIA,
-      HORARIO_PADRAO_CHECKLIST,
+      config.horarioPadraoChecklist,
       0,
       null,
       db,
